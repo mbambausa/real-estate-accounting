@@ -1,0 +1,17 @@
+/* src/styles/global.css */
+/* Contains only minimal global styles not covered by UnoCSS */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Focus styles for accessibility */
+:focus-visible {
+  outline: 2px solid hsl(var(--color-primary-500));
+  outline-offset: 2px;
+}

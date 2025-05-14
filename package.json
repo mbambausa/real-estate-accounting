@@ -9,6 +9,15 @@
     "astro": "astro"
   },
   "dependencies": {
-    "astro": "^5.7.13"
+    "alpinejs": "^3.14.9",
+    "astro": "^5.7.13",
+    "htmx.org": "^1.9.12",
+    "lucia": "^3.2.2"
+  },
+  "devDependencies": {
+    "@astrojs/cloudflare": "^12.5.3",
+    "@types/alpinejs": "^3.13.11",
+    "unocss": "^66.1.1",
+    "wrangler": "^4.14.4"
   }
 }
