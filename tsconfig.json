@@ -1,5 +1,5 @@
 {
-  "extends": "astro/tsconfig/strict",
+  "extends": "astro/tsconfigs/strict",
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
@@ -13,6 +13,6 @@
     "jsx": "preserve",
     "jsxImportSource": "solid-js"
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", ".astro/types.d.ts"],
   "exclude": ["node_modules", "dist"]
 }
