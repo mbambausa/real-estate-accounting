@@ -1,0 +1,16 @@
+---
+// src/pages/auth/signout.astro
+import AuthLayout from "@layouts/AuthLayout.astro";
+---
+<AuthLayout title="Sign Out">
+  <form
+    method="POST"
+    action="/api/auth/signout?redirect=true&callbackUrl=/auth/signin"
+    class="max-w-md mx-auto p-8 bg-white rounded-lg shadow text-center"
+  >
+    <h1 class="text-2xl font-bold mb-4">Sign Out</h1>
+    <button type="submit" class="w-full py-2 bg-red-600 text-white rounded">
+      Confirm Sign Out
+    </button>
+  </form>
+</AuthLayout>

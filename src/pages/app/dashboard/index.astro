@@ -1,0 +1,88 @@
+---
+// src/pages/app/dashboard/index.astro
+import AppLayout from "@layouts/AppLayout.astro";
+import { formatCurrency } from "@utils/financial";
+
+// In a real implementation, we'd fetch this data from the database
+const bankAccounts = [
+  { id: "1", name: "Checking Account", balance: 12500.75 },
+  { id: "2", name: "Savings Account", balance: 45000.00 }
+];
+
+// Sample data for expense chart
+const expenseData = [
+  { category: "Property Taxes", amount: 12500 },
+  { category: "Insurance", amount: 8750 },
+  { category: "Utilities", amount: 6200 },
+  { category: "Repairs & Maintenance", amount: 9300 },
+  { category: "Mortgage Interest", amount: 15400 }
+];
+
+// Calculate total balance
+const totalBalance = bankAccounts.reduce((sum, account) => sum + account.balance, 0);
+---
+
+<AppLayout title="Dashboard">
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <!-- Bank Balances -->
+    <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+      <h2 class="text-lg font-semibold mb-4">Bank Balances</h2>
+      <div class="space-y-4">
+        {bankAccounts.map((account) => (
+          <div class="flex justify-between items-center border-b pb-2">
+            <span>{account.name}</span>
+            <span class={account.balance >= 0 ? "text-green-600" : "text-red-600"}>
+              {formatCurrency(account.balance)}
+            </span>
+          </div>
+        ))}
+        <div class="flex justify-between items-center pt-2 font-semibold">
+          <span>Total</span>
+          <span class={totalBalance >= 0 ? "text-green-600" : "text-red-600"}>
+            {formatCurrency(totalBalance)}
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- YTD Expenses -->
+    <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+      <h2 class="text-lg font-semibold mb-4">Year-to-Date Expenses</h2>
+      <div class="space-y-2">
+        {expenseData.map((expense) => (
+          <div>
+            <div class="flex justify-between text-sm mb-1">
+              <span>{expense.category}</span>
+              <span>{formatCurrency(expense.amount)}</span>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-2">
+              <div 
+                class="bg-primary-500 h-2 rounded-full" 
+                style={`width: ${(expense.amount / Math.max(...expenseData.map(e => e.amount))) * 100}%`}>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+    
+    <!-- Quick Links -->
+    <div class="md:col-span-2 bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+      <h2 class="text-lg font-semibold mb-4">Quick Actions</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <a href="/app/transactions/new" class="p-4 bg-primary-50 rounded-lg hover:bg-primary-100">
+          <h3 class="font-medium">New Transaction</h3>
+          <p class="text-sm text-gray-600">Record income or expenses</p>
+        </a>
+        <a href="/app/transactions/import" class="p-4 bg-primary-50 rounded-lg hover:bg-primary-100">
+          <h3 class="font-medium">Import Transactions</h3>
+          <p class="text-sm text-gray-600">Import from CSV file</p>
+        </a>
+        <a href="/app/reports" class="p-4 bg-primary-50 rounded-lg hover:bg-primary-100">
+          <h3 class="font-medium">View Reports</h3>
+          <p class="text-sm text-gray-600">Financial statements and analysis</p>
+        </a>
+      </div>
+    </div>
+  </div>
+</AppLayout>

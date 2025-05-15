@@ -1,0 +1,30 @@
+---
+// src/layouts/AuthLayout.astro
+import "../styles/global.css";
+
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title} | Real Estate Accounting</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Load Alpine.js -->
+    <script src="/alpine.min.js" defer is:inline></script>
+  </head>
+  <body class="min-h-screen bg-gray-50 flex items-center justify-center">
+    <div class="w-full max-w-md p-8 bg-white rounded-lg shadow-md">
+      <div class="text-center mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">{title}</h1>
+      </div>
+      <slot />
+    </div>
+  </body>
+</html>

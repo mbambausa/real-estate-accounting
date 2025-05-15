@@ -2,28 +2,29 @@
 import { defineConfig } from 'astro/config';
 import cloudflare from '@astrojs/cloudflare';
 import UnoCSS from 'unocss/astro';
+// Remove this import: import authAstro from 'auth-astro';
 
-// https://astro.build/config
 export default defineConfig({
-  output: 'server', // Enable SSR
+  output: 'server',
   adapter: cloudflare({
-    mode: 'directory', // Use directory mode for simpler deployment
-    functionPerRoute: true // Create a separate function per route for better performance
+    mode: 'directory',
+    functionPerRoute: true,
+    runtime: {
+      mode: 'experimental',
+      bindings: {} // Bindings defined in wrangler.toml
+    }
   }),
   integrations: [
-    UnoCSS({
-      injectReset: true // Add CSS reset
-    })
+    UnoCSS({ injectReset: true }),
+    // Remove authAstro() integration from here
   ],
   vite: {
+    ssr: {
+      external: ['node:path', '@node-rs/argon2-wasm32-wasi'],
+    },
     build: {
-      // Optimize build for performance
-      minify: 'terser',
-      // Configure Terser options
-      terserOptions: {
-        compress: {
-          drop_console: true // Remove console logs in production
-        }
+      rollupOptions: {
+        external: ['node:path', '@node-rs/argon2-wasm32-wasi']
       }
     }
   }

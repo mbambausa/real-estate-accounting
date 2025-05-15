@@ -6,18 +6,41 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "dev:wrangler": "wrangler pages dev --kv SESSION=local-dev-session-kv --d1 DB=3198e043-80f0-4d51-b849-4d3a78380039 -- npm run dev"
   },
   "dependencies": {
+    "@auth/core": "^0.39.1",
+    "@auth/d1-adapter": "^1.9.1",
+    "@types/papaparse": "^5.3.16",
     "alpinejs": "^3.14.9",
     "astro": "^5.7.13",
-    "htmx.org": "^1.9.12",
-    "lucia": "^3.2.2"
+    "chart.js": "^4.4.9",
+    "cookie": "^1.0.2",
+    "decimal.js": "^10.5.0",
+    "htmx.org": "^2.0.4",
+    "oslo": "^1.2.1",
+    "papaparse": "^5.5.2",
+    "pdf-lib": "^1.17.1"
   },
   "devDependencies": {
     "@astrojs/cloudflare": "^12.5.3",
+    "@cloudflare/workers-types": "^4.20250514.0",
+    "@node-rs/argon2": "^2.0.2",
+    "@playwright/test": "^1.52.0",
     "@types/alpinejs": "^3.13.11",
+    "@types/cookie": "^0.6.0",
+    "playwright": "^1.52.0",
     "unocss": "^66.1.1",
+    "vitest": "^3.1.3",
     "wrangler": "^4.14.4"
+  },
+  "resolutions": {
+    "@emnapi/runtime": null,
+    "memfs-browser": null,
+    "memfs": null,
+    "fs-monkey": null
   }
 }

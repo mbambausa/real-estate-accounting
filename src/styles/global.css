@@ -12,6 +12,8 @@ body {
 
 /* Focus styles for accessibility */
 :focus-visible {
-  outline: 2px solid hsl(var(--color-primary-500));
+  outline: 2px solid #0ea5e9; /* Use your primary-500 hex value directly */
+  /* Alternatively, if your primary-500 is better represented in HSL for outlines: */
+  /* outline: 2px solid hsl(202, 90%, 53%); */ /* Example HSL for #0ea5e9 */
   outline-offset: 2px;
 }

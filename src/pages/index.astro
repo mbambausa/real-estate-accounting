@@ -1,16 +1,116 @@
 ---
-
+// src/pages/index.astro
+import "../styles/global.css"; // Import global styles for consistency
 ---
 
+<!DOCTYPE html>
 <html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro</title>
-	</head>
-	<body>
-		<h1>Astro</h1>
-	</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Real Estate Accounting | Simple & Free</title> 
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    
+  </head>
+  <body class="min-h-screen bg-gray-50 text-gray-800">
+    <header class="bg-white border-b border-gray-200 sticky top-0 z-50">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center h-16">
+          <div class="flex items-center">
+            <a href="/" class="text-xl font-bold text-primary-600 hover:text-primary-700 transition-colors">
+              Real Estate Accounting
+            </a>
+          </div>
+          <nav class="flex items-center space-x-4">
+            <a href="/auth/signin" class="px-3 py-2 text-sm font-medium text-gray-600 hover:text-primary-600 transition-colors">
+              Login
+            </a>
+            <a 
+              href="/auth/signup" 
+              class="px-4 py-2 bg-primary-600 text-white text-sm font-medium rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors"
+            >
+              Sign Up Free
+            </a>
+          </nav>
+        </div>
+      </div>
+    </header>
+    
+    <main>
+      <section class="bg-white py-16 sm:py-24 lg:py-32">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div class="lg:grid lg:grid-cols-12 lg:gap-8 items-center">
+            <div class="lg:col-span-6 text-center lg:text-left">
+              <h1 class="text-4xl font-extrabold text-gray-900 sm:text-5xl md:text-6xl tracking-tight">
+                Real Estate Accounting
+                <span class="block text-primary-600 xl:inline">Made Simple & Free</span>
+              </h1>
+              <p class="mt-4 text-lg text-gray-600 sm:mt-5 sm:text-xl lg:text-lg xl:text-xl">
+                A zero-cost, high-performance accounting solution designed specifically for real estate owners, property managers, and investors. GAAP-compliant, intuitive, and scalable.
+              </p>
+              <div class="mt-8 sm:mt-10 flex flex-col sm:flex-row sm:justify-center lg:justify-start space-y-4 sm:space-y-0 sm:space-x-4">
+                <a 
+                  href="/auth/signup"
+                  class="w-full sm:w-auto px-8 py-3 bg-primary-600 text-white text-base font-medium rounded-md shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors flex items-center justify-center"
+                >
+                  Get Started For Free
+                </a>
+                <a 
+                  href="/auth/signin"
+                  class="w-full sm:w-auto px-8 py-3 bg-gray-100 text-primary-700 text-base font-medium rounded-md shadow-sm hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors flex items-center justify-center"
+                >
+                  Sign In
+                </a>
+              </div>
+            </div>
+            <div class="mt-12 lg:mt-0 lg:col-span-6">
+             
+              <div class="bg-gray-200 h-80 rounded-lg shadow-xl flex items-center justify-center">
+                <svg class="w-24 h-24 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+              
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="py-16 sm:py-24 bg-gray-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div class="text-center">
+            <h2 class="text-base font-semibold text-primary-600 tracking-wide uppercase">Features</h2>
+            <p class="mt-2 text-3xl font-extrabold text-gray-900 sm:text-4xl">
+              Everything you need for smart real estate accounting
+            </p>
+          </div>
+          <div class="mt-12 grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+            {[
+              { name: "GAAP-Compliant Double-Entry", description: "Maintain accurate and professional financial records.", icon: "M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2" },
+              { name: "Multi-Entity & Property Management", description: "Seamlessly manage finances across multiple properties and legal entities.", icon: "M4 6h16M4 10h16M4 14h16M4 18h16" },
+              { name: "Comprehensive Financial Reporting", description: "Generate Income Statements, Balance Sheets, Cash Flow, and custom reports.", icon: "M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" },
+              { name: "Bank Reconciliation & Imports", description: "Easily reconcile bank statements and import transactions via CSV.", icon: "M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" },
+              { name: "Notes Receivable (Loans)", description: "Track loans you've issued, including amortization and payments.", icon: "M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" },
+              { name: "Zero Cost & High Performance", description: "Built with modern edge technologies for speed and no hosting fees.", icon: "M13 10V3L4 14h7v7l9-11h-7z" }
+            ].map(feature => (
+              <div class="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+                <div class="flex items-center justify-center h-12 w-12 rounded-md bg-primary-500 text-white mb-4">
+                  <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={feature.icon}></path></svg>
+                </div>
+                <h3 class="text-lg font-medium text-gray-900">{feature.name}</h3>
+                <p class="mt-2 text-base text-gray-500">{feature.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </main>
+    
+    <footer class="bg-white border-t border-gray-200 py-8">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <p class="text-sm text-gray-500">
+          Real Estate Accounting | &copy; {new Date().getFullYear()}
+        </p>
+      
+      </div>
+    </footer>
+  </body>
 </html>

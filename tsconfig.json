@@ -1,3 +1,4 @@
+// tsconfig.json
 {
   "extends": "astro/tsconfigs/strict",
   "compilerOptions": {
@@ -10,9 +11,10 @@
       "@styles/*": ["src/styles/*"],
       "@db/*": ["src/db/*"]
     },
-    "jsx": "preserve",
-    "jsxImportSource": "solid-js"
+    // THESE TWO LINES make `import NextAuth from '@auth/core'` valid:
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true
   },
   "include": ["src/**/*", ".astro/types.d.ts"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": ["node_modules", "dist", "auth.config.ts"]
 }

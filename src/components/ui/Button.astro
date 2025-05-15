@@ -1,0 +1,53 @@
+---
+// src/components/ui/Button.astro
+interface Props {
+  type?: 'button' | 'submit' | 'reset';
+  variant?: 'primary' | 'secondary' | 'outline' | 'danger';
+  size?: 'sm' | 'md' | 'lg';
+  fullWidth?: boolean;
+  disabled?: boolean;
+  href?: string;
+}
+
+const {
+  type = 'button',
+  variant = 'primary',
+  size = 'md',
+  fullWidth = false,
+  disabled = false,
+  href
+} = Astro.props;
+
+// Define class variations
+const variantClasses = {
+  primary: 'bg-primary-600 hover:bg-primary-700 text-white',
+  secondary: 'bg-gray-200 hover:bg-gray-300 text-gray-800',
+  outline: 'bg-transparent border border-primary-600 text-primary-600 hover:bg-primary-50',
+  danger: 'bg-red-600 hover:bg-red-700 text-white'
+};
+
+const sizeClasses = {
+  sm: 'text-sm py-1 px-2',
+  md: 'py-2 px-4',
+  lg: 'text-lg py-2.5 px-5'
+};
+
+const baseClasses = 'inline-flex items-center justify-center rounded font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-opacity-50';
+const widthClass = fullWidth ? 'w-full' : '';
+const disabledClass = disabled ? 'opacity-50 cursor-not-allowed' : '';
+
+const classes = `${baseClasses} ${variantClasses[variant]} ${sizeClasses[size]} ${widthClass} ${disabledClass}`;
+
+// HTML attribute for disabled state
+const disabledAttr = disabled ? { disabled } : {};
+---
+
+{href ? (
+  <a href={href} class={classes}>
+    <slot />
+  </a>
+) : (
+  <button type={type} class={classes} {...disabledAttr}>
+    <slot />
+  </button>
+)}

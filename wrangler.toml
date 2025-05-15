@@ -1,0 +1,17 @@
+# wrangler.toml
+name = "real-estate-accounting"
+main = "./dist/_worker.js"
+compatibility_date = "2024-05-01"
+
+# D1 database configuration
+[[d1_databases]]
+binding = "DB"
+database_name = "real-estate-accounting-db"
+database_id = "3198e043-80f0-4d51-b849-4d3a78380039"
+
+# KV namespace for session storage
+[[kv_namespaces]]
+binding = "SESSION"
+# For local development, use a simpler placeholder:
+id = "local-dev-session-kv"
+# For production, replace with your real KV namespace ID from Cloudflare Dashboard

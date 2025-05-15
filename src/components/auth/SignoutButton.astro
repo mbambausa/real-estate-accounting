@@ -1,0 +1,26 @@
+---
+// src/components/auth/SignoutButton.astro
+import Button from '@components/ui/Button.astro';
+
+interface Props {
+  variant?: 'primary' | 'secondary' | 'outline' | 'danger';
+  size?: 'sm' | 'md' | 'lg';
+  text?: string;
+}
+
+const { 
+  variant = 'danger',
+  size = 'md',
+  text = 'Sign Out'
+} = Astro.props;
+---
+
+<form 
+  method="POST" 
+  action="/api/auth/signout?redirect=true&callbackUrl=/auth/signin"
+  class="inline-block"
+>
+  <Button type="submit" variant={variant} size={size}>
+    {text}
+  </Button>
+</form>

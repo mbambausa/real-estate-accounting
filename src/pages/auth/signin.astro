@@ -1,0 +1,95 @@
+---
+// src/pages/auth/signin.astro
+import AuthLayout from "@layouts/AuthLayout.astro";
+
+let errorMessage = "";
+const params = new URL(Astro.request.url).searchParams;
+
+// Check for error messages passed in the URL query parameters
+// Auth.js often uses this pattern to communicate sign-in issues.
+if (params.has("error")) {
+  const errorCode = params.get("error");
+  if (errorCode === "CredentialsSignin") {
+    errorMessage = "Incorrect email or password. Please try again.";
+  } else if (errorCode === "OAuthAccountNotLinked") {
+    // Example of another common error you might want to handle
+    errorMessage = "This email is linked via a different provider (e.g., Google). Try signing in with that provider or link your accounts.";
+  } else {
+    // Generic error message for other Auth.js errors or custom errors
+    errorMessage = `Sign-in failed. Error: ${errorCode}`;
+    // For more user-friendly messages, you might map other common error codes here.
+  }
+}
+---
+
+<AuthLayout title="Sign In">
+  <div class="w-full max-w-sm mx-auto"> {/* Adjusted max-width for typical auth forms */}
+    <form
+      method="POST"
+      action="/api/auth/callback/credentials?redirect=true&callbackUrl=/app/dashboard"
+      class="bg-white shadow-md rounded-lg px-8 pt-6 pb-8 mb-4 space-y-6"
+    >
+      <div class="text-center">
+        <h1 class="text-2xl font-bold text-gray-800">Sign In</h1>
+        <p class="text-sm text-gray-600 mt-1">Access your Real Estate Accounting dashboard.</p>
+      </div>
+
+      {errorMessage && (
+        <div class="p-3 bg-red-100 border border-red-300 text-red-700 rounded-md text-sm" role="alert">
+          {errorMessage}
+        </div>
+      )}
+
+      {/* CSRF Token Handling:
+        Auth.js v5 (used by auth-astro) typically handles CSRF protection for its POST routes
+        (like /api/auth/callback/credentials) automatically, often by checking the Origin header
+        or using a double-submit cookie pattern managed by the library.
+        Manually adding a CSRF token from an outdated cookie name like "next-auth.csrf-token"
+        is incorrect and likely to cause issues.
+        If auth-astro requires manual CSRF token submission (which is less common for its core routes),
+        its documentation would specify how to obtain the correct token.
+        For now, we assume it's handled by the library.
+      */}
+
+      <div>
+        <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email address</label>
+        <input 
+          id="email"
+          name="email" 
+          type="email" 
+          required 
+          placeholder="you@example.com"
+          class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm" 
+        />
+      </div>
+
+      <div>
+        <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+        <input 
+          id="password"
+          name="password" 
+          type="password" 
+          required 
+          placeholder="••••••••"
+          class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm" 
+        />
+        {/* Optional: Add a "Forgot password?" link here */}
+      </div>
+
+      <div>
+        <button 
+          type="submit" 
+          class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition duration-150 ease-in-out"
+        >
+          Sign In
+        </button>
+      </div>
+    </form>
+    <p class="text-center text-sm text-gray-600">
+      Don't have an account? 
+      <a href="/auth/signup" class="font-medium text-primary-600 hover:text-primary-500">
+        Register here
+      </a>
+    </p>
+  </div>
+</AuthLayout>

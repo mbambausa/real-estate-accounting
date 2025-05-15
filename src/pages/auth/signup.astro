@@ -1,0 +1,142 @@
+---
+// src/pages/auth/signup.astro
+import AuthLayout from "@layouts/AuthLayout.astro";
+import { hash } from "@node-rs/argon2";
+import type { RuntimeEnv } from "../../env.d";
+
+let errorMessage = "";
+
+if (Astro.request.method === "POST") {
+  const env = Astro.locals.runtime?.env as RuntimeEnv | undefined;
+
+  if (!env?.DB) {
+    errorMessage = "Database configuration error. Please try again later.";
+    console.error("Signup POST: DB binding not found in Astro.locals.runtime.env");
+  } else {
+    const db = env.DB;
+    const form = await Astro.request.formData();
+    const name = form.get("name")?.toString() ?? "";
+    const email = form.get("email")?.toString()?.trim() ?? "";
+    const pw = form.get("password")?.toString() ?? "";
+    const confirm = form.get("confirm_password")?.toString() ?? "";
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !pw) {
+      errorMessage = "Email and password are required.";
+    } else if (!emailRegex.test(email)) {
+      errorMessage = "Please enter a valid email address.";
+    } else if (pw.length < 8) {
+      errorMessage = "Password must be at least 8 characters.";
+    } else if (pw !== confirm) {
+      errorMessage = "Passwords do not match.";
+    } else {
+      try {
+        const existingUser: { id: string } | null = await db
+          .prepare("SELECT id FROM users WHERE email = ?")
+          .bind(email)
+          .first();
+        
+        if (existingUser) {
+          errorMessage = "An account with this email already exists. Please try logging in.";
+        } else {
+          const pwHash = await hash(pw, { memoryCost: 19456, timeCost: 2, parallelism: 1, outputLen: 32 });
+          const newUserId = crypto.randomUUID();
+          
+          await db
+            .prepare("INSERT INTO users (id, email, name, password_hash) VALUES (?, ?, ?, ?)")
+            .bind(newUserId, email, name, pwHash)
+            .run();
+          
+          return Astro.redirect("/auth/signin?registered=true");
+        }
+      } catch (e: any) {
+        console.error("Signup error:", e);
+        errorMessage = "An unexpected error occurred during registration. Please try again.";
+      }
+    }
+  }
+}
+---
+<AuthLayout title="Create Your Account">
+  <div class="w-full max-w-md mx-auto">
+    <form method="POST" class="bg-white shadow-xl rounded-lg px-8 pt-6 pb-8 mb-4 space-y-6">
+      <div class="text-center">
+        <h1 class="text-2xl font-bold text-gray-800">Register</h1>
+        <p class="text-sm text-gray-600 mt-1">Join Real Estate Accounting today.</p>
+      </div>
+
+      {errorMessage && (
+        <div class="p-3 bg-red-100 border border-red-300 text-red-700 rounded-md text-sm" role="alert">
+          {errorMessage}
+        </div>
+      )}
+
+      <div>
+        <label for="name-signup" class="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+        <input 
+          id="name-signup"
+          name="name" 
+          type="text" 
+          placeholder="John Doe"
+          class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm" 
+        />
+      </div>
+      
+      <div>
+        <label for="email-signup" class="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+        <input 
+          id="email-signup"
+          name="email" 
+          type="email" 
+          required 
+          autocomplete="email"
+          placeholder="you@example.com"
+          class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm" 
+        />
+      </div>
+      
+      <div>
+        <label for="password-signup" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+        <input 
+          id="password-signup"
+          name="password" 
+          type="password" 
+          required 
+          minlength="8" 
+          autocomplete="new-password"
+          placeholder="Minimum 8 characters"
+          class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm" 
+        />
+      </div>
+      
+      <div>
+        <label for="confirm_password-signup" class="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
+        <input 
+          id="confirm_password-signup"
+          name="confirm_password" 
+          type="password" 
+          required 
+          minlength="8"
+          autocomplete="new-password"
+          placeholder="Re-enter your password"
+          class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm" 
+        />
+      </div>
+      
+      <div>
+        <button 
+          type="submit" 
+          class="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150 ease-in-out"
+        >
+          Create Account
+        </button>
+      </div>
+    </form>
+    <p class="text-center text-sm text-gray-600">
+      Already have an account? 
+      <a href="/auth/signin" class="font-medium text-primary-600 hover:text-primary-500">
+        Sign In
+      </a>
+    </p>
+  </div>
+</AuthLayout>
