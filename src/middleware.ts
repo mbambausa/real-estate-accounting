@@ -1,67 +1,72 @@
 // src/middleware.ts
-import { defineMiddleware } from "astro:middleware";
+import type { MiddlewareHandler } from "astro";
 import { parse } from "cookie";
-import type { RuntimeEnv } from "./env.d";
-import type { User, Session } from "@auth/core/types";
 
-export const onRequest = defineMiddleware(async (context, next) => {
+export const onRequest: MiddlewareHandler = async (context, next) => {
   try {
-    const env = context.locals.runtime?.env as RuntimeEnv | undefined;
+    // Pull env from Cloudflare runtime bindings
+    const env = context.locals.runtime.env;
+
     const cookies = parse(context.request.headers.get("cookie") || "");
-    
-    // Look for auth-related session token
-    const sessionToken = cookies["__session"] || cookies["next-auth.session-token"] || "";
-    
-    if (sessionToken && env?.DB) {
-      // Try to retrieve the session from the database
+    const sessionCookieName = "authjs.session-token";
+    const secureSessionCookieName = "__Secure-authjs.session-token";
+    const sessionToken =
+      cookies[sessionCookieName] ||
+      cookies[secureSessionCookieName] ||
+      cookies["next-auth.session-token"] ||
+      cookies["__session"];
+
+    // Reset any existing locals
+    context.locals.user = null;
+    context.locals.session = null;
+
+    if (sessionToken && env.DB) {
       const db = env.DB;
+      const now = Math.floor(Date.now() / 1000);
+
       const sessionData = await db
-        .prepare("SELECT * FROM sessions WHERE session_token = ? AND expires > ?")
-        .bind(sessionToken, Math.floor(Date.now() / 1000))
-        .first();
-      
+        .prepare(
+          "SELECT userId, expires FROM sessions WHERE sessionToken = ? AND expires > ?"
+        )
+        .bind(sessionToken, now)
+        .first<{ userId: string; expires: number }>();
+
       if (sessionData) {
-        // If we found a valid session, fetch the associated user
-        const userId = sessionData.user_id as string; // Explicitly cast to string
-        const userData = await db
+        const userRow = await db
           .prepare("SELECT id, name, email FROM users WHERE id = ?")
-          .bind(userId)
-          .first();
-        
-        if (userData) {
-          // Create properly typed user object with null fallbacks for optional fields
-          const user: User = {
-            id: userData.id as string,
-            name: (userData.name as string | null) ?? null,
-            email: (userData.email as string | null) ?? null
+          .bind(sessionData.userId)
+          .first<{
+            id: string;
+            name: string | null;
+            email: string | null;
+          }>();
+
+        if (userRow) {
+          context.locals.user = {
+            id: userRow.id,
+            name: userRow.name,
+            email: userRow.email,
           };
-          
-          // Populate context.locals with the session and user data
-          const expiryTime = (sessionData.expires as number) * 1000;
           context.locals.session = {
-            user,
-            expires: new Date(expiryTime).toISOString()
-          } as Session;
-          context.locals.user = user;
+            user: context.locals.user,
+            expires: new Date(sessionData.expires * 1000).toISOString(),
+          };
         }
       }
     }
   } catch (error) {
     console.error("Error in auth middleware:", error);
+    context.locals.user = null;
+    context.locals.session = null;
   }
-  
-  // Check for protected routes
+
   const protectedRoutes = /^\/app\/.*/;
   const url = new URL(context.request.url);
 
-  if (protectedRoutes.test(url.pathname)) {
-    if (!context.locals.session) {
-      // User is not authenticated, redirect to sign-in page
-      return context.redirect("/auth/signin");
-    }
-    // User is authenticated, allow access
+  if (protectedRoutes.test(url.pathname) && !context.locals.session) {
+    const callbackUrl = encodeURIComponent(url.pathname + url.search);
+    return context.redirect(`/auth/signin?callbackUrl=${callbackUrl}`);
   }
 
-  // Continue to the next middleware or route handler
   return next();
-});
+};

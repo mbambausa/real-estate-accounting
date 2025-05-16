@@ -2,45 +2,49 @@
 /// <reference types="astro/client" />
 /// <reference types="@astrojs/cloudflare" />
 
-// Import Cloudflare types directly
-import type { D1Database, KVNamespace } from '@cloudflare/workers-types';
-import type { Session, User } from '@auth/core/types';
+import type { D1Database, KVNamespace, R2Bucket } from '@cloudflare/workers-types';
+import type { Session as AuthJsSession, User as AuthJsUser } from '@auth/core/types';
 
-// Define session data structure from database
-export interface DbSessionData {
-  id: string;
-  session_token: string;
-  user_id: string;
-  expires: number; // Unix timestamp in seconds
-}
-
-// Define user data structure from database
-export interface DbUserData {
-  id: string;
-  name: string | null;
-  email: string;
-  password_hash: string;
-}
-
-// Export RuntimeEnv for explicit imports
+// src/env.d.ts
 export interface RuntimeEnv {
   DB: D1Database;
+  SESSION: KVNamespace;
+  DOCUMENTS: R2Bucket;
+  ENVIRONMENT: string;
   AUTH_SECRET: string;
-  SESSION?: KVNamespace;
+  CSRF_SECRET: string;
+  REPORTS_CACHE?: KVNamespace;
+  GITHUB_CLIENT_ID: string; 
+  GITHUB_CLIENT_SECRET: string;
 }
 
-// Explicitly augment App.Locals for Astro
 declare global {
   namespace App {
     interface Locals {
-      // Auth.js session and user objects
-      session: Session | null;
-      user: User | null;
-      
-      // Cloudflare runtime
       runtime: {
         env: RuntimeEnv;
+        ctx: ExecutionContext;
+        cf?: IncomingRequestCfProperties;
       };
+      user: AuthJsUser | null;
+      session: AuthJsSession | null;
     }
   }
+}
+
+// Additional types for Cloudflare
+interface ExecutionContext {
+  waitUntil(promise: Promise<any>): void;
+  passThroughOnException(): void;
+}
+
+interface IncomingRequestCfProperties {
+  // CF properties like country, city, etc.
+  country?: string;
+  city?: string;
+  continent?: string;
+  latitude?: string;
+  longitude?: string;
+  timezone?: string;
+  // Add others as needed
 }

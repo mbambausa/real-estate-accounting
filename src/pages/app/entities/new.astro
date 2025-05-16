@@ -1,0 +1,326 @@
+---
+// src/pages/app/entities/new.astro
+import AppLayout from "../../../layouts/AppLayout.astro";
+// EntityForm is a good candidate if the form structure is identical to the edit form.
+// For this example, we'll assume the form is directly in this page, but using EntityForm.astro would be more DRY.
+// import EntityForm from "../../../components/entities/EntityForm.astro"; 
+import EntitySelector from "../../../components/entities/EntitySelector.astro";
+import Alert from "../../../components/ui/Alert.astro";
+import Button from "../../../components/ui/Button.astro"; // For a potential cancel button if not part of EntityForm
+import { createEntityService } from "../../../lib/services/entity-service";
+import { getSession } from "../../../lib/auth";
+import type { Entity } from "../../../types/entity";
+import type { APIContext } from "astro";
+
+// Type assertion for locals if not globally typed
+const locals = Astro.locals as App.Locals;
+
+// 1. Get session and validate authentication - FIXED: Added the environment parameter
+const session = await getSession(Astro.request, locals.runtime?.env);
+const userId = session?.user?.id;
+
+if (!userId) {
+  return Astro.redirect('/auth/signin?error=Unauthorized&redirect=/app/entities/new');
+}
+
+// Add type assertion for userId
+const userIdString = userId as string;
+
+// 2. Get D1 client from Astro.locals
+const db = locals.runtime?.env?.DB;
+
+if (!db) {
+  console.error("D1 Database binding (DB) not found in Astro.locals.runtime.env.");
+  Astro.response.status = 500;
+  // Consider rendering an error message or a dedicated error component
+}
+
+// Check if we have an error in query params (e.g., from a failed POST redirect)
+const errorMessageFromQuery = Astro.url.searchParams.get('error');
+
+// Initialize entity service
+const entityService = db ? createEntityService(db) : null;
+
+let allEntitiesForParentSelector: Entity[] = [];
+let pageError: string | null = null;
+
+if (entityService) {
+  try {
+    // 3. Fetch all entities for the current user to populate the parent selector
+    allEntitiesForParentSelector = await entityService.getAllEntities(userIdString);
+  } catch (err: any) {
+    console.error('Error fetching entities for parent selector:', err);
+    pageError = err.message || "Failed to load existing entities for parent selection.";
+  }
+} else if (!db) {
+    pageError = "Database service is unavailable. Please contact support.";
+}
+
+
+// List of business types (could be moved to a shared constants file)
+const businessTypes = [
+  "sole_proprietorship",
+  "partnership",
+  "limited_liability_company",
+  "corporation",
+  "s_corporation",
+  "trust",
+  "other"
+];
+
+// Format business type for display
+const formatBusinessTypeDisplay = (type: string) => {
+  return type
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
+// This form will POST to /api/entities
+// The API handler will then redirect back on success/failure, potentially with query params.
+---
+
+<AppLayout title="Create New Entity">
+  <div class="container mx-auto px-4 py-8 max-w-2xl">
+    <div class="mb-8 text-center">
+      <h1 class="text-3xl font-bold text-gray-800">Create New Entity</h1>
+      <p class="text-gray-600 mt-2">Add a new real estate entity, company, or property to manage.</p>
+    </div>
+
+    {errorMessageFromQuery && (
+      <Alert type="error" class="mb-6" dismissible={true}>
+        {decodeURIComponent(errorMessageFromQuery)}
+      </Alert>
+    )}
+
+    {pageError && (
+      <Alert type="error" class="mb-6">
+        {pageError}
+      </Alert>
+    )}
+
+    {db && entityService && ( <div class="bg-white shadow-xl rounded-xl overflow-hidden border border-gray-200">
+        <div class="p-6 sm:p-8">
+          <form 
+            method="POST" 
+            action="/api/entities"  
+            class="space-y-6"
+            id="new-entity-form"
+          >
+            <div>
+              <label for="name" class="block text-sm font-medium text-gray-700 mb-1">
+                Entity Name <span class="text-red-600">*</span>
+              </label>
+              <input
+                id="name"
+                name="name"
+                type="text"
+                required
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors"
+                placeholder="e.g., Main Street Property Holdings"
+              />
+              <p class="mt-1 text-xs text-gray-500">
+                The common name used for this entity or property.
+              </p>
+            </div>
+
+            <div>
+              <label for="legal_name" class="block text-sm font-medium text-gray-700 mb-1">
+                Legal Name (Optional)
+              </label>
+              <input
+                id="legal_name"
+                name="legal_name"
+                type="text"
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors"
+                placeholder="e.g., 123 Main Street Holdings LLC"
+              />
+              <p class="mt-1 text-xs text-gray-500">
+                The official legal name for tax and legal documents.
+              </p>
+            </div>
+
+            <div>
+              <label for="ein" class="block text-sm font-medium text-gray-700 mb-1">
+                EIN (Optional)
+              </label>
+              <input
+                id="ein"
+                name="ein"
+                type="text"
+                pattern="^\d{2}-?\d{7}$" class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors"
+                placeholder="XX-XXXXXXX"
+                maxlength="10"
+              />
+              <p class="mt-1 text-xs text-gray-500">
+                Employer Identification Number. Format: XX-XXXXXXX.
+              </p>
+            </div>
+
+            <div>
+              <label for="business_type" class="block text-sm font-medium text-gray-700 mb-1">
+                Business Type (Optional)
+              </label>
+              <select
+                id="business_type"
+                name="business_type"
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white"
+              >
+                <option value="">Select a business type...</option>
+                {businessTypes.map(type => (
+                  <option value={type}>
+                    {formatBusinessTypeDisplay(type)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label for="address" class="block text-sm font-medium text-gray-700 mb-1">
+                Property or Business Address (Optional)
+              </label>
+              <textarea
+                id="address"
+                name="address"
+                rows="3"
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors"
+                placeholder="Street address, City, State, ZIP"
+              ></textarea>
+            </div>
+
+            <div>
+              <label for="legal_address" class="block text-sm font-medium text-gray-700 mb-1">
+                Legal Address (Optional)
+              </label>
+              <textarea
+                id="legal_address"
+                name="legal_address"
+                rows="3"
+                class="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors"
+                placeholder="Legal address for official correspondence (if different)"
+              ></textarea>
+              <p class="mt-1 text-xs text-gray-500">
+                If different from property/business address.
+              </p>
+            </div>
+
+            <EntitySelector
+              entities={allEntitiesForParentSelector}
+              name="parent_id" id="parent_id_selector" label="Parent Entity (Optional)"
+              placeholder="None (This is a top-level entity)"
+              showLegalName={true}
+              class="mt-1"
+            />
+            <p class="mt-1 text-xs text-gray-500">
+              Select if this entity is a subsidiary of another (e.g., a property owned by an LLC).
+            </p>
+
+            <div class="flex justify-end space-x-4 pt-6 border-t border-gray-200 mt-8">
+              <Button 
+                href="/app/entities" 
+                variant="outline"
+                type="link" >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                id="submit-new-entity"
+              >
+                Create Entity
+              </Button>
+            </div>
+          </form>
+        </div>
+      </div>
+    )}
+    {(!db || !entityService) && !pageError && (
+         <Alert type="warning" class="mb-6">
+            The form cannot be displayed because the database service is unavailable.
+        </Alert>
+    )}
+  </div>
+</AppLayout>
+
+<script>
+  // Client-side validation and formatting for EIN
+  document.addEventListener('DOMContentLoaded', () => {
+    const einInput = document.getElementById('ein') as HTMLInputElement | null;
+    const form = document.getElementById('new-entity-form') as HTMLFormElement | null;
+    const submitButton = document.getElementById('submit-new-entity') as HTMLButtonElement | null;
+
+    if (einInput) {
+      einInput.addEventListener('input', (e) => {
+        const target = e.target as HTMLInputElement;
+        let value = target.value.replace(/[^\d]/g, '');
+        if (value.length > 2) {
+          value = value.slice(0, 2) + '-' + value.slice(2, 9); // Max 9 digits total for EIN
+        }
+        target.value = value;
+
+        // Basic pattern validation feedback (optional, as browser handles pattern attribute)
+        if (value.length > 0 && !/^\d{2}-\d{7}$/.test(value) && value.length === 10) {
+            einInput.setCustomValidity("EIN must be in XX-XXXXXXX format.");
+        } else if (value.length > 0 && value.length < 10) {
+            einInput.setCustomValidity("EIN must be 9 digits long.");
+        }
+         else {
+            einInput.setCustomValidity("");
+        }
+      });
+       einInput.addEventListener('blur', () => { // Validate on blur too
+        if (einInput.value.length > 0 && !einInput.checkValidity()) {
+            // You could show a more prominent error message here
+            console.warn("EIN format is invalid:", einInput.value);
+        }
+      });
+    }
+
+    // Handle form submission with client-side fetch for better UX (optional, but recommended)
+    if (form && submitButton) {
+      form.addEventListener('submit', async function(event) {
+        event.preventDefault(); // Prevent default HTML form submission
+        submitButton.disabled = true;
+        submitButton.textContent = 'Creating...';
+
+        const formData = new FormData(form);
+        const entityData = Object.fromEntries(formData.entries());
+
+        // Remove _method if it exists from FormData, not needed for direct POST
+        delete entityData._method; 
+        if (entityData.parent_id === "") { // Ensure empty parent_id is null or omitted
+            delete entityData.parent_id;
+        }
+
+        try {
+          const response = await fetch('/api/entities', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              // Include CSRF token if your auth setup requires it for POSTs
+            },
+            body: JSON.stringify(entityData),
+          });
+
+          if (response.ok) {
+            const newEntity = await response.json() as { name: string };
+            // Redirect to the entity list or detail page with a success message
+            window.location.href = `/app/entities?success=Entity "${newEntity.name}" created successfully.`;
+          } else {
+            const errorResult = await response.json() as { error?: string };
+            // Display error message on the page (e.g., in an alert component)
+            // For simplicity, redirecting with error query param:
+            window.location.href = `/app/entities/new?error=${encodeURIComponent(errorResult.error || 'Failed to create entity.')}`;
+          }
+        } catch (error) {
+          console.error('Form submission error:', error);
+          window.location.href = `/app/entities/new?error=${encodeURIComponent('An unexpected error occurred.')}`;
+        } finally {
+          // Re-enable button in case of non-redirect error handling
+          submitButton.disabled = false;
+          submitButton.textContent = 'Create Entity';
+        }
+      });
+    }
+  });
+</script>

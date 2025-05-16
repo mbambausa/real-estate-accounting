@@ -1,0 +1,112 @@
+---
+// src/pages/app/accounts/chart.astro
+import AppLayout from "../../../layouts/AppLayout.astro";
+import ChartOfAccounts from "../../../components/accounts/ChartOfAccounts.astro"; // This component will handle hierarchy display
+import Button from "../../../components/ui/Button.astro";
+import Alert from "../../../components/ui/Alert.astro"; // For displaying errors
+import { createAccountService } from "../../../lib/services/account-service";
+import { getSession } from "../../../lib/auth";
+import type { DbChartOfAccount } from "../../../db/schema";
+import type { APIContext } from "astro";
+
+// Type assertion for locals if not globally typed
+const locals = Astro.locals as App.Locals;
+
+// 1. Get session and validate authentication - FIX: Add second parameter
+const session = await getSession(Astro.request, locals.runtime?.env);
+const userId = session?.user?.id;
+
+if (!userId) {
+  return Astro.redirect('/auth/signin?error=Unauthorized&redirect=/app/accounts/chart');
+}
+
+// 2. Get D1 client from Astro.locals
+const db = locals.runtime?.env?.DB;
+if (!db) {
+  console.error("D1 Database binding (DB) not found in Astro.locals.runtime.env.");
+  Astro.response.status = 500;
+}
+
+// Check if we should show inactive accounts from query parameter
+const showInactive = Astro.url.searchParams.get('showInactive') === 'true';
+const errorMessageFromQuery = Astro.url.searchParams.get('error'); // For general errors passed in URL
+
+const accountService = db ? createAccountService(db) : null;
+
+let allUserAccounts: DbChartOfAccount[] = [];
+let pageError: string | null = null;
+
+if (accountService) {
+  try {
+    // 3. Fetch all accounts for the user. The component will handle filtering by active status if needed.
+    allUserAccounts = await accountService.getAllAccounts(userId);
+  } catch (err: any) {
+    console.error('Error fetching accounts for chart view:', err);
+    pageError = err.message || "Failed to load accounts. Please try again later.";
+    if (err.status === 401) { // Example if service throws specific auth error
+        return Astro.redirect('/auth/signin?error=SessionExpired&redirect=/app/accounts/chart');
+    }
+    Astro.response.status = err.status || 500;
+  }
+} else if (!db) {
+    pageError = "Database service is unavailable. Please contact support.";
+    Astro.response.status = 500;
+}
+---
+
+<AppLayout title="Chart of Accounts - Hierarchical View">
+  <div class="container mx-auto px-4 py-8">
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+      <h1 class="text-3xl font-bold text-gray-800">Chart of Accounts Hierarchy</h1>
+      <div class="flex gap-3 flex-shrink-0">
+        <Button href="/app/accounts" variant="outline">
+          List View
+        </Button>
+        <Button href="/app/accounts/new" variant="primary">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+          </svg>
+          Add New Account
+        </Button>
+      </div>
+    </div>
+
+    {errorMessageFromQuery && (
+      <Alert type="error" class="mb-6" dismissible={true}>
+        {decodeURIComponent(errorMessageFromQuery)}
+      </Alert>
+    )}
+    {pageError && (
+      <Alert type="error" class="mb-6">
+        {pageError}
+      </Alert>
+    )}
+
+    {accountService && !pageError ? (
+      <>
+        <div class="mb-6 flex justify-end">
+          <a 
+            href={`/app/accounts/chart${showInactive ? '' : '?showInactive=true'}`}
+            class="text-sm font-medium text-primary-600 hover:text-primary-800 hover:underline transition-colors"
+          >
+            {showInactive ? 'Hide Inactive Accounts' : 'Show Inactive Accounts'}
+          </a>
+        </div>
+        <ChartOfAccounts 
+          accounts={allUserAccounts} 
+          showInactive={showInactive}
+        />
+      </>
+    ) : !pageError ? (
+        <div class="p-6 text-center text-gray-500 bg-white shadow-lg rounded-xl border border-gray-200">
+             <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <h3 class="mt-2 text-sm font-medium text-gray-900">No accounts to display in hierarchy.</h3>
+            <p class="mt-1 text-sm text-gray-500">
+                Ensure accounts have been created.
+            </p>
+        </div>
+    ) : null}
+  </div>
+</AppLayout>

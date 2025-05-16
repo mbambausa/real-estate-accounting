@@ -1,0 +1,206 @@
+---
+// src/pages/app/entities/index.astro
+import AppLayout from "../../../layouts/AppLayout.astro";
+import EntityList from "../../../components/entities/EntityList.astro";
+import Button from "../../../components/ui/Button.astro";
+import Alert from "../../../components/ui/Alert.astro";
+import { createEntityService } from "../../../lib/services/entity-service";
+import { getSession } from "../../../lib/auth"; // Ensure this path is correct for your getSession utility
+import type { Entity } from "../../../types/entity";
+import type { APIContext } from "astro";
+
+// Type assertion for locals if not globally typed
+const locals = Astro.locals as App.Locals;
+
+// 1. Get session and validate authentication - FIXED: Added the environment parameter
+const session = await getSession(Astro.request, locals.runtime?.env);
+const userId = session?.user?.id;
+
+if (!userId) {
+  // If no user ID, redirect to sign-in or show an error
+  // It's usually better to handle this in middleware for all protected routes
+  return Astro.redirect('/auth/signin?error=Unauthorized&redirect=/app/entities');
+}
+
+// 2. Get D1 client from Astro.locals
+const db = locals.runtime?.env?.DB;
+
+if (!db) {
+  console.error("D1 Database binding (DB) not found in Astro.locals.runtime.env.");
+  // Set an error state to display on the page
+  Astro.response.status = 500;
+  // You could render an error component or a simple message here
+  // For simplicity, we'll let the try-catch below handle it if entityService fails.
+}
+
+// Check if we have success or error messages from redirects
+const successMessage = Astro.url.searchParams.get('success');
+const errorMessage = Astro.url.searchParams.get('error');
+
+// Initialize entity service
+const entityService = db ? createEntityService(db) : null;
+
+let entities: Entity[] = [];
+let pageError: string | null = null;
+
+if (entityService) {
+  try {
+    // 3. Pass userId to getAllEntities
+    entities = await entityService.getAllEntities(userId);
+  } catch (err: any) {
+    console.error('Error fetching entities:', err);
+    pageError = err.message || "Failed to load entities. Please try again later.";
+    if (err.status === 401) { // Example if service throws specific auth error
+        return Astro.redirect('/auth/signin?error=SessionExpired&redirect=/app/entities');
+    }
+  }
+} else {
+  pageError = "Database service is unavailable. Please contact support.";
+}
+
+// Prepare business types for filter dropdown
+const businessTypes = ['LLC', 'CORPORATION', 'PARTNERSHIP', 'SOLE_PROPRIETORSHIP', 'TRUST', 'OTHER'];
+---
+
+<AppLayout title="Real Estate Entities">
+  <div class="container mx-auto px-4 py-8">
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-2xl font-bold text-gray-800">Real Estate Entities</h1>
+      <div>
+        <Button href="/app/entities/new" variant="primary">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+          </svg>
+          Add New Entity
+        </Button>
+      </div>
+    </div>
+
+    {successMessage && (
+      <Alert type="success" class="mb-6" dismissible={true}>
+        {successMessage}
+      </Alert>
+    )}
+
+    {errorMessage && (
+      <Alert type="error" class="mb-6" dismissible={true}>
+        {errorMessage}
+      </Alert>
+    )}
+
+    {pageError && !errorMessage && ( // Display pageError only if no specific errorMessage from redirect
+      <Alert type="error" class="mb-6">
+        {pageError}
+      </Alert>
+    )}
+
+    <div class="bg-white shadow-lg rounded-xl overflow-hidden mb-8 border border-gray-200">
+      <div class="p-6 border-b border-gray-200 flex items-center justify-between flex-wrap gap-4 bg-gray-50">
+        <div class="flex items-center space-x-4 flex-wrap gap-y-2">
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
+              </svg>
+            </div>
+            <input
+              type="text"
+              placeholder="Search entities..."
+              class="border border-gray-300 rounded-lg px-4 py-2 pl-10 w-full sm:w-64 focus:ring-primary-500 focus:border-primary-500 transition-colors"
+              id="entity-search"
+            />
+          </div>
+          <select 
+            class="border border-gray-300 rounded-lg px-4 py-2 focus:ring-primary-500 focus:border-primary-500 transition-colors" 
+            data-filter="businessType"
+            id="business-type-filter"
+          >
+            <option value="">All Business Types</option>
+            {businessTypes.map(type => (
+              <option value={type}>{type.replace('_', ' ')}</option>
+            ))}
+          </select>
+        </div>
+        <div class="flex items-center">
+          <label for="show-hierarchy" class="mr-2 text-sm font-medium text-gray-700">
+            Show Hierarchy
+          </label>
+          <input
+            type="checkbox"
+            id="show-hierarchy"
+            class="h-5 w-5 rounded text-primary-600 focus:ring-primary-500 border-gray-300 transition-colors"
+          />
+        </div>
+      </div>
+
+      {entityService && !pageError ? (
+        <EntityList 
+          entities={entities}
+          showControls={true} 
+          showHierarchyInitial={false} />
+      ) : !pageError ? ( <div class="p-6 text-center text-gray-500">
+          <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+          </svg>
+          <h3 class="mt-2 text-sm font-medium text-gray-900">No entities found</h3>
+          <p class="mt-1 text-sm text-gray-500">Get started by creating a new entity.</p>
+          <div class="mt-6">
+            <Button href="/app/entities/new" variant="primary" size="sm">
+              Create Entity
+            </Button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  </div>
+</AppLayout>
+
+<script>
+  // Client-side filtering and hierarchy toggle
+  document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('entity-search') as HTMLInputElement | null;
+    const typeFilter = document.getElementById('business-type-filter') as HTMLSelectElement | null;
+    const hierarchyToggle = document.getElementById('show-hierarchy') as HTMLInputElement | null;
+    const entityListContainer = document.querySelector('.entity-list-container');
+    
+    const filterEntities = () => {
+      if (!searchInput || !typeFilter) return;
+      const searchTerm = searchInput.value.toLowerCase();
+      const businessType = typeFilter.value;
+      
+      // This part assumes EntityList.astro is rendering rows with data attributes
+      const rows = document.querySelectorAll('[data-entity-row]');
+      
+      rows.forEach(row => {
+        const name = row.getAttribute('data-entity-name')?.toLowerCase() || '';
+        const legalName = row.getAttribute('data-entity-legal-name')?.toLowerCase() || '';
+        const type = row.getAttribute('data-entity-business-type') || '';
+        
+        const matchesSearch = name.includes(searchTerm) || legalName.includes(searchTerm);
+        const matchesType = !businessType || type === businessType;
+        
+        (row as HTMLElement).style.display = matchesSearch && matchesType ? '' : 'none';
+      });
+    };
+    
+    // Handle hierarchy display
+    const toggleHierarchyDisplay = () => {
+      if (!hierarchyToggle || !entityListContainer) return;
+      const showHierarchy = hierarchyToggle.checked;
+      
+      if (showHierarchy) {
+        entityListContainer.classList.add('show-hierarchy-active');
+      } else {
+        entityListContainer.classList.remove('show-hierarchy-active');
+      }
+    };
+    
+    searchInput?.addEventListener('input', filterEntities);
+    typeFilter?.addEventListener('change', filterEntities);
+    hierarchyToggle?.addEventListener('change', toggleHierarchyDisplay);
+
+    // Initial setup
+    filterEntities();
+    toggleHierarchyDisplay();
+  });
+</script>

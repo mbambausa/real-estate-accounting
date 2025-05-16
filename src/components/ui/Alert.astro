@@ -3,11 +3,13 @@
 interface Props {
   type?: 'info' | 'success' | 'warning' | 'error';
   dismissible?: boolean;
+  class?: string; // Allow a custom class to be passed
 }
 
 const { 
   type = 'info',
-  dismissible = false 
+  dismissible = false,
+  class: customClassFromProps // Store the passed class prop
 } = Astro.props;
 
 // Color classes based on alert type
@@ -18,14 +20,18 @@ const colorClasses = {
   error: 'bg-red-50 text-red-800 border-red-200'
 };
 ---
-
 <div 
-  class={`p-4 mb-4 border rounded-md ${colorClasses[type]}`}
+  class:list={[
+    "p-4 mb-4 border rounded-md", // Default classes for the alert
+    colorClasses[type],           // Type-specific color classes
+    customClassFromProps          // Additional classes passed via props
+  ]}
   x-data="{ show: true }"
   x-show="show"
   x-transition:leave="transition ease-in duration-200"
   x-transition:leave-start="opacity-100"
   x-transition:leave-end="opacity-0"
+  role="alert"
 >
   <div class="flex items-start">
     <div class="flex-1">

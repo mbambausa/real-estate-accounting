@@ -1,0 +1,295 @@
+---
+// src/pages/app/accounts/[id]/index.astro
+import AppLayout from "../../../../layouts/AppLayout.astro";
+import AccountForm from "../../../../components/accounts/AccountForm.astro";
+import Alert from "../../../../components/ui/Alert.astro";
+import Button from "../../../../components/ui/Button.astro";
+import { createAccountService } from "../../../../lib/services/account-service";
+import { AppError, ErrorCode } from "../../../../utils/errors";
+import { getSession } from "../../../../lib/auth.ts";
+import type { DbChartOfAccount, AccountSystemType } from "../../../../db/schema";
+import type { APIContext } from "astro";
+
+// Type assertion for locals if not globally typed
+const locals = Astro.locals as App.Locals;
+
+// 1. Get session and validate authentication - FIX: Added second parameter
+const session = await getSession(Astro.request, locals.runtime?.env);
+const userId = session?.user?.id;
+
+const accountIdFromPath = Astro.params.id; // This is now the UUID ID
+
+if (!userId) {
+  return Astro.redirect(`/auth/signin?error=Unauthorized&redirect=/app/accounts/${accountIdFromPath || ''}`);
+}
+
+if (!accountIdFromPath) {
+  return Astro.redirect('/app/accounts?error=AccountIDMissing');
+}
+
+// 2. Get D1 client from Astro.locals
+const db = locals.runtime?.env?.DB;
+if (!db) {
+  console.error("D1 Database binding (DB) not found in Astro.locals.runtime.env.");
+  Astro.response.status = 500;
+}
+
+// Check if we're in edit mode
+const isEditing = Astro.url.searchParams.get('edit') === 'true';
+
+// Check for success or error messages from redirects
+const successMessage = Astro.url.searchParams.get('success');
+const errorMessageFromQuery = Astro.url.searchParams.get('error');
+
+const accountService = db ? createAccountService(db) : null;
+
+let account: DbChartOfAccount | null = null;
+let allUserAccountsForParentSelector: DbChartOfAccount[] = [];
+let parentAccountForDisplay: DbChartOfAccount | null = null; // For displaying parent name
+let pageError: string | null = null;
+
+if (accountService) {
+  try {
+    // 3. Fetch account by its UUID ID
+    account = await accountService.getAccountById(accountIdFromPath, userId);
+
+    if (!account) {
+      throw new AppError(ErrorCode.NOT_FOUND, 'Account not found or access denied.', 404);
+    }
+
+    // If the account has a parent_id, fetch the parent account for display purposes
+    if (account.parent_id) {
+        parentAccountForDisplay = await accountService.getAccountById(account.parent_id, userId);
+    }
+
+    if (isEditing) {
+      // Fetch all accounts for the parent selector, AccountForm will filter out the current account
+      allUserAccountsForParentSelector = await accountService.getAllAccounts(userId);
+    }
+
+  } catch (err: any) {
+    console.error(`Error fetching account details for ID ${accountIdFromPath}:`, err);
+    pageError = err.message || 'An unexpected error occurred while loading account details.';
+    if (err instanceof AppError && err.status === 404) {
+      Astro.response.status = 404;
+    } else {
+      Astro.response.status = 500;
+    }
+  }
+} else if (!db) {
+    pageError = "Database service is unavailable. Please contact support.";
+    Astro.response.status = 500;
+}
+
+// Function to get color class for account type tag
+const getTypeClass = (type?: AccountSystemType | string | null) => {
+  const classes: Record<string, string> = {
+    asset: "bg-blue-100 text-blue-800",
+    liability: "bg-orange-100 text-orange-800",
+    equity: "bg-purple-100 text-purple-800",
+    income: "bg-green-100 text-green-800",
+    expense: "bg-red-100 text-red-800"
+  };
+  return classes[type || ''] || "bg-gray-100 text-gray-800";
+};
+
+const formatBoolean = (value: number | boolean | undefined | null) => {
+    return value === 1 || value === true ? 'Yes' : 'No';
+}
+---
+
+<AppLayout title={account ? (isEditing ? `Edit Account: ${account.name}` : account.name) : "Account Details"}>
+  <div class="container mx-auto px-4 py-8 max-w-3xl">
+    {pageError && !account && (
+      <div class="flex flex-col items-center justify-center py-12">
+        <Alert type="error" class="mb-6">{pageError}</Alert>
+        <Button href="/app/accounts" variant="outline">Back to Chart of Accounts</Button>
+      </div>
+    )}
+
+    {account && !pageError && (
+      <>
+        <div class="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h1 class="text-3xl font-bold text-gray-800 break-words">
+              {isEditing ? "Edit Account" : account.name}
+            </h1>
+            {!isEditing && <p class="text-gray-600 mt-1 text-sm">Code: {account.code}</p>}
+            {isEditing && <p class="text-gray-600 mt-1">Editing account: <strong>{account.code} - {account.name}</strong></p>}
+          </div>
+          <div class="flex gap-3 flex-shrink-0">
+            {isEditing ? (
+              <Button href={`/app/accounts/${account.id}`} variant="outline">
+                Cancel Edit
+              </Button>
+            ) : (
+              <Button href={`/app/accounts/${account.id}?edit=true`} variant="primary">
+                Edit Account
+              </Button>
+            )}
+            <Button href="/app/accounts" variant="secondary">
+              All Accounts
+            </Button>
+          </div>
+        </div>
+
+        {successMessage && <Alert type="success" class="mb-6" dismissible={true}>{decodeURIComponent(successMessage)}</Alert>}
+        {errorMessageFromQuery && <Alert type="error" class="mb-6" dismissible={true}>{decodeURIComponent(errorMessageFromQuery)}</Alert>}
+        {pageError && <Alert type="error" class="mb-6">{pageError}</Alert>} {/* For errors during edit form display after initial load */}
+
+
+        {isEditing ? (
+          // EDIT FORM SECTION
+          <AccountForm
+            account={account}
+            availableParentAccounts={allUserAccountsForParentSelector}
+            isEditing={true}
+            errorMessage={errorMessageFromQuery || undefined}
+            formAction={`/api/accounts/${account.id}`}
+            submitButtonText="Save Changes"
+            cancelUrl={`/app/accounts/${account.id}`}
+          />
+        ) : (
+          // VIEW DETAILS SECTION
+          <div class="bg-white shadow-xl rounded-xl overflow-hidden border border-gray-200">
+            <div class="p-6 border-b border-gray-200">
+              <h2 class="text-xl font-semibold text-gray-700">Account Details</h2>
+            </div>
+            <dl class="divide-y divide-gray-200">
+              <div class="px-6 py-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                <dt class="text-sm font-medium text-gray-500">Account Code</dt>
+                <dd class="mt-1 text-sm text-gray-900 md:col-span-2 font-mono">{account.code}</dd>
+              </div>
+              <div class="px-6 py-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                <dt class="text-sm font-medium text-gray-500">Account Name</dt>
+                <dd class="mt-1 text-sm text-gray-900 md:col-span-2">{account.name}</dd>
+              </div>
+              <div class="px-6 py-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                <dt class="text-sm font-medium text-gray-500">Account Type</dt>
+                <dd class="mt-1 text-sm text-gray-900 md:col-span-2">
+                  <span class={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getTypeClass(account.type)}`}>
+                    {account.type.charAt(0).toUpperCase() + account.type.slice(1)}
+                  </span>
+                </dd>
+              </div>
+              {account.subtype && (
+                <div class="px-6 py-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                  <dt class="text-sm font-medium text-gray-500">Subtype</dt>
+                  <dd class="mt-1 text-sm text-gray-900 md:col-span-2">{account.subtype}</dd>
+                </div>
+              )}
+              {account.type === 'expense' && (
+                <div class="px-6 py-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                  <dt class="text-sm font-medium text-gray-500">Is Recoverable</dt>
+                  <dd class="mt-1 text-sm text-gray-900 md:col-span-2">{formatBoolean(account.is_recoverable)}</dd>
+                </div>
+              )}
+              {account.type === 'expense' && account.is_recoverable === 1 && account.recovery_percentage !== null && (
+                <div class="px-6 py-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                  <dt class="text-sm font-medium text-gray-500">Recovery Percentage</dt>
+                  <dd class="mt-1 text-sm text-gray-900 md:col-span-2">{account.recovery_percentage}%</dd>
+                </div>
+              )}
+              <div class="px-6 py-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                <dt class="text-sm font-medium text-gray-500">Status</dt>
+                <dd class="mt-1 text-sm text-gray-900 md:col-span-2">
+                  <span class={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${account.is_active === 1 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                    {account.is_active === 1 ? 'Active' : 'Inactive'}
+                  </span>
+                </dd>
+              </div>
+              {account.tax_category && (
+                <div class="px-6 py-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                  <dt class="text-sm font-medium text-gray-500">Tax Category</dt>
+                  <dd class="mt-1 text-sm text-gray-900 md:col-span-2">{account.tax_category}</dd>
+                </div>
+              )}
+              {parentAccountForDisplay && (
+                <div class="px-6 py-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                  <dt class="text-sm font-medium text-gray-500">Parent Account</dt>
+                  <dd class="mt-1 text-sm text-gray-900 md:col-span-2">
+                    <a href={`/app/accounts/${parentAccountForDisplay.id}`} class="text-primary-600 hover:underline">
+                      {parentAccountForDisplay.code} - {parentAccountForDisplay.name}
+                    </a>
+                  </dd>
+                </div>
+              )}
+              {account.description && (
+                <div class="px-6 py-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <dt class="text-sm font-medium text-gray-500">Description</dt>
+                  <dd class="mt-1 text-sm text-gray-900 md:col-span-2 whitespace-pre-line">{account.description}</dd>
+                </div>
+              )}
+               <div class="px-6 py-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                <dt class="text-sm font-medium text-gray-500">Created At</dt>
+                <dd class="mt-1 text-sm text-gray-900 md:col-span-2">{new Date(account.created_at * 1000).toLocaleString()}</dd>
+              </div>
+              <div class="px-6 py-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                <dt class="text-sm font-medium text-gray-500">Last Updated</dt>
+                <dd class="mt-1 text-sm text-gray-900 md:col-span-2">{new Date(account.updated_at * 1000).toLocaleString()}</dd>
+              </div>
+            </dl>
+             <div class="px-6 py-4 border-t border-gray-200 flex flex-wrap gap-3">
+                <Button href={`/app/accounts/${account.id}/entity`} variant="primary">Entity Associations</Button>
+                <form 
+                    method="POST" 
+                    action={`/api/accounts/${account.id}`}
+                    class="inline-block delete-account-form"
+                    >
+                    <input type="hidden" name="_method" value="DELETE" />
+                    <Button type="submit" variant="danger" id="delete-account-button">Delete Account</Button>
+                </form>
+            </div>
+          </div>
+        )}
+      </>
+    )}
+  </div>
+</AppLayout>
+
+<script define:vars={{ accountId: account?.id, currentPath: Astro.url.pathname }}>
+  // Client-side script for delete confirmation and potential fetch submission
+  document.addEventListener('DOMContentLoaded', () => {
+    const deleteForm = document.querySelector('.delete-account-form');
+    const deleteButton = document.getElementById('delete-account-button');
+
+    if (deleteForm && deleteButton) {
+        deleteForm.addEventListener('submit', async function(event) {
+            event.preventDefault();
+            if (!confirm('Are you sure you want to delete this account? This action cannot be undone and might affect existing transactions or links.')) {
+                return;
+            }
+            if (deleteButton) {
+                deleteButton.disabled = true;
+                deleteButton.textContent = 'Deleting...';
+            }
+
+            try {
+                const response = await fetch(deleteForm.action, { // action is /api/accounts/[accountId]
+                    method: 'DELETE', // Service and API handler expect DELETE
+                    headers: { 
+                        // CSRF token if needed
+                    },
+                });
+
+                if (response.ok) {
+                    window.location.href = `/app/accounts?success=Account deleted successfully.`;
+                } else {
+                    const errorResult = await response.json();
+                    // Redirect back to this page with error
+                    window.location.href = `${currentPath}?error=${encodeURIComponent(errorResult.error || 'Failed to delete account.')}`;
+                }
+            } catch (error) {
+                console.error('Delete form submission error:', error);
+                window.location.href = `${currentPath}?error=${encodeURIComponent('An unexpected error occurred during deletion.')}`;
+            }
+            // No finally to re-enable button as page redirects
+        });
+    }
+
+    // Client-side fetch for Edit Form (if enhancing AccountForm.astro or handling here)
+    // The AccountForm.astro currently relies on standard HTML POST with _method=PUT.
+    // If you want client-side fetch for edit, that logic would typically be part of AccountForm.astro
+    // or handled here if AccountForm emits an event.
+  });
+</script>

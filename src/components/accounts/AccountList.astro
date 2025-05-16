@@ -1,0 +1,292 @@
+---
+// src/components/accounts/AccountList.astro
+import Button from "@components/ui/Button.astro";
+import type { AccountSystemType as AccountType } from "@db/schema"; // Using AccountSystemType from schema
+import type { DbChartOfAccount } from "@db/schema";
+
+interface Props {
+  accounts: DbChartOfAccount[];
+  showActions?: boolean;
+  // filterType?: string; // Removed as client-side filtering will handle type display, grouping is primary
+}
+
+const { accounts = [], showActions = true } = Astro.props;
+
+// Function to get appropriate style class for account type
+const getTypeClass = (type: AccountType | string) => { // Allow string for safety
+  const classes: Record<string, string> = { // Explicitly type AccountType as string for keys
+    asset: "bg-blue-100 text-blue-800",
+    liability: "bg-orange-100 text-orange-800",
+    equity: "bg-purple-100 text-purple-800",
+    income: "bg-green-100 text-green-800",
+    expense: "bg-red-100 text-red-800"
+  };
+  return classes[type] || "bg-gray-100 text-gray-800";
+};
+
+// Group accounts by type for better organization
+const accountsByType = accounts.reduce((acc, account) => {
+  const type = account.type;
+  if (!acc[type]) {
+    acc[type] = [];
+  }
+  acc[type].push(account);
+  return acc;
+}, {} as Record<AccountType, DbChartOfAccount[]>);
+
+// Sort account types in standard accounting order
+const orderedTypes: AccountType[] = ["asset", "liability", "equity", "income", "expense"];
+
+const hasAccounts = accounts.length > 0;
+---
+
+<div x-data="{
+  searchTerm: '',
+  filterActiveOnly: true, // Default to showing active accounts only
+  
+  // This function will be called to determine if a row should be shown.
+  // It's not strictly necessary to call it on every input if rows are manipulated directly,
+  // but it's good for a reactive count or if re-rendering a list.
+  // For direct DOM manipulation, the event listeners are key.
+  getVisibleAccountsCount() {
+    let count = 0;
+    document.querySelectorAll('[data-account-row]').forEach(row => {
+      if ((row as HTMLElement).style.display !== 'none') {
+        count++;
+      }
+    });
+    return count;
+  },
+
+  // Function to apply all filters.
+  // This will be triggered by changes in searchTerm or filterActiveOnly.
+  applyFilters() {
+    const term = this.searchTerm.toLowerCase();
+    const activeOnly = this.filterActiveOnly;
+
+    document.querySelectorAll('[data-account-row]').forEach(rowEl => {
+      const row = rowEl as HTMLElement;
+      const code = row.dataset.accountCode?.toLowerCase() || '';
+      const name = row.dataset.accountName?.toLowerCase() || '';
+      const isActive = row.dataset.accountIsActive === 'true'; // 'true' or 'false' string
+
+      const matchesSearch = term === '' || code.includes(term) || name.includes(term);
+      const matchesActive = !activeOnly || isActive;
+
+      row.style.display = (matchesSearch && matchesActive) ? '' : 'none';
+    });
+  }
+}" x-init="applyFilters()"> <div class="mb-6 p-4 bg-gray-50 rounded-lg shadow border border-gray-200">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+      <div>
+        <label for="account-search-input" class="block text-sm font-medium text-gray-700 mb-1">Search Accounts</label>
+        <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd" />
+              </svg>
+            </div>
+            <input
+              type="text"
+              id="account-search-input"
+              x-model.debounce.300ms="searchTerm"
+              x-on:input="applyFilters()"
+              placeholder="Search by code or name..."
+              class="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors"
+            />
+        </div>
+      </div>
+      <div class="flex items-center justify-start md:justify-end pt-2">
+        <input
+          id="filter-active-accounts"
+          type="checkbox"
+          x-model="filterActiveOnly"
+          x-on:change="applyFilters()"
+          class="h-5 w-5 text-primary-600 focus:ring-primary-500 border-gray-300 rounded shadow-sm"
+        />
+        <label for="filter-active-accounts" class="ml-2 text-sm font-medium text-gray-700">
+          Show active accounts only
+        </label>
+      </div>
+    </div>
+  </div>
+  
+  {hasAccounts ? (
+    <div class="space-y-8">
+      {orderedTypes.map(typeKey => {
+        const typeAccounts = accountsByType[typeKey] || [];
+        // Conditionally render section only if there are accounts of this type AFTER filtering (more complex with pure Astro)
+        // For now, render all sections and rows, JS will hide them.
+        // A small script could hide empty sections after filtering.
+        if (typeAccounts.length === 0) return null; 
+        
+        return (
+          <section class="account-type-section" data-account-type-section={typeKey}>
+            <h3 class="text-xl font-semibold text-gray-700 mb-3 pb-2 border-b border-gray-200">
+              {typeKey.charAt(0).toUpperCase() + typeKey.slice(1)} Accounts
+            </h3>
+            <div class="bg-white rounded-lg shadow-md overflow-hidden border border-gray-200">
+              <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                  <thead class="bg-gray-50">
+                    <tr>
+                      <th scope="col" class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Code</th>
+                      <th scope="col" class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Name</th>
+                      <th scope="col" class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider hidden sm:table-cell">Subtype</th>
+                      <th scope="col" class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                      {showActions && (
+                        <th scope="col" class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody class="bg-white divide-y divide-gray-200">
+                    {typeAccounts.map(account => (
+                      <tr 
+                        data-account-row
+                        data-account-id={account.id}
+                        data-account-code={account.code}
+                        data-account-name={account.name}
+                        data-account-is-active={(account.is_active === 1).toString()}
+                        data-account-type={account.type}
+                        class="hover:bg-gray-50 transition-colors"
+                      >
+                        <td class="px-4 py-3 whitespace-nowrap text-sm font-medium text-primary-700">
+                           <a href={`/app/accounts/${account.id}`} class="hover:underline" title={`View ${account.code}`}>
+                            {account.code}
+                           </a>
+                        </td>
+                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700">{account.name}</td>
+                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500 hidden sm:table-cell">
+                          {account.subtype || '—'}
+                          {account.is_recoverable === 1 && <span class="block text-xs text-green-600">(Recoverable)</span>}
+                        </td>
+                        <td class="px-4 py-3 whitespace-nowrap text-sm">
+                          <span class={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${account.is_active === 1 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                            {account.is_active === 1 ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        {showActions && (
+                          <td class="px-4 py-3 whitespace-nowrap text-sm text-right space-x-3">
+                            <a href={`/app/accounts/${account.id}`} class="text-blue-600 hover:text-blue-800 hover:underline" title="View Details">View</a>
+                            <a href={`/app/accounts/${account.id}?edit=true`} class="text-indigo-600 hover:text-indigo-800 hover:underline" title="Edit Account">Edit</a>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div class="p-3 bg-gray-50 border-t border-gray-200 text-xs text-gray-500 text-right type-account-count hidden">
+                Showing <span class="font-medium type-visible-count"></span> of <span class="font-medium type-total-count">{typeAccounts.length.toString()}</span> {typeKey} accounts.
+              </div>
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  ) : (
+    <div class="p-6 text-center text-gray-500 bg-white shadow-lg rounded-xl border border-gray-200">
+      <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+         <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+      </svg>
+      <h3 class="mt-2 text-sm font-medium text-gray-900">No accounts to display.</h3>
+      <p class="mt-1 text-sm text-gray-500">
+        Try adjusting your filters or <a href="/app/accounts/new" class="text-primary-600 hover:underline">add a new account</a>.
+      </p>
+    </div>
+  )}
+  
+  <div x-show="searchTerm || !filterActiveOnly" class="mt-6 text-sm text-gray-600 text-center">
+    Showing <span x-text="getVisibleAccountsCount()" class="font-medium"></span> matching accounts.
+  </div>
+</div>
+
+<script>
+  // Additional script to update counts per type section after filtering
+  function updateTypeSectionCounts() {
+    document.querySelectorAll('.account-type-section').forEach(section => {
+      const visibleRows = section.querySelectorAll('[data-account-row]:not([style*="display: none"])');
+      const totalRows = section.querySelectorAll('[data-account-row]');
+      const countDisplay = section.querySelector('.type-account-count');
+      const visibleCountEl = section.querySelector('.type-visible-count');
+      const totalCountEl = section.querySelector('.type-total-count');
+
+      if (countDisplay && visibleCountEl && totalCountEl) {
+        visibleCountEl.textContent = visibleRows.length.toString();
+        // totalCountEl.textContent = totalRows.length; // Total is static, already rendered
+        
+        // Use optional chaining and type assertions for DOM element access
+        const searchInput = document.getElementById('account-search-input') as HTMLInputElement | null;
+        const filterCheckbox = document.getElementById('filter-active-accounts') as HTMLInputElement | null;
+        
+        if (visibleRows.length < totalRows.length && 
+            ((searchInput && searchInput.value) || 
+             (filterCheckbox && !filterCheckbox.checked))) {
+          countDisplay.classList.remove('hidden');
+        } else {
+          countDisplay.classList.add('hidden');
+        }
+        
+        // Hide entire section if no visible rows for this type due to filters
+        if (visibleRows.length === 0 && 
+            ((searchInput && searchInput.value) || 
+             (filterCheckbox && !filterCheckbox.checked))) {
+          (section as HTMLElement).style.display = 'none';
+        } else {
+          (section as HTMLElement).style.display = '';
+        }
+      }
+    });
+  }
+
+  // Ensure Alpine.js is initialized before trying to use it
+  document.addEventListener('alpine:initialized', () => {
+    // Hook into Alpine's reactivity or use a MutationObserver if direct DOM manipulation is too frequent
+    // For now, let's call it after applyFilters in x-data
+    // Add this to the x-data applyFilters method:
+    // queueMicrotask(() => updateTypeSectionCounts()); 
+    // Or, more simply, call it after input/change events in x-data
+  });
+  
+  // Add to the x-on:input and x-on:change in x-data:
+  // x-on:input="applyFilters(); queueMicrotask(() => updateTypeSectionCounts());"
+  // x-on:change="applyFilters(); queueMicrotask(() => updateTypeSectionCounts());"
+  // x-init="applyFilters(); queueMicrotask(() => updateTypeSectionCounts());"
+  // The queueMicrotask ensures DOM updates from Alpine are done before we count.
+
+  // Simpler: just call it on DOMContentLoaded and let Alpine handle its updates.
+  // The `applyFilters` in `x-init` will run, then this.
+  document.addEventListener('DOMContentLoaded', () => {
+    // This is a bit of a hack. Ideally, Alpine would trigger an event we can listen to.
+    // For now, we can re-call applyFilters from the parent if needed, or make this component
+    // more self-contained with client:load if heavy JS interaction is needed.
+    // The current x-init should handle initial filtering.
+    // The `updateTypeSectionCounts` can be called after Alpine's `applyFilters`.
+    // We can modify applyFilters in x-data to call it.
+    const alpineComponent = document.querySelector('[x-data]');
+    
+    // Handle Alpine component access with type safety
+    if (alpineComponent) {
+      // Use a type declaration for Alpine's __x property
+      type AlpineComponent = Element & {
+        __x?: {
+          datas: Array<{
+            applyFilters: () => void;
+          }>;
+        };
+      };
+      
+      const typedAlpineComponent = alpineComponent as AlpineComponent;
+      
+      if (typedAlpineComponent.__x?.datas[0]) {
+        const originalApplyFilters = typedAlpineComponent.__x.datas[0].applyFilters;
+        typedAlpineComponent.__x.datas[0].applyFilters = function() {
+          originalApplyFilters.apply(this, []);
+          queueMicrotask(updateTypeSectionCounts);
+        }
+        // Call once at init
+        queueMicrotask(updateTypeSectionCounts);
+      }
+    }
+  });
+</script>

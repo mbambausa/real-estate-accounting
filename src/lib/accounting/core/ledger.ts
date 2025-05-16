@@ -1,216 +1,273 @@
 // src/lib/accounting/core/ledger.ts
 
 import { Account } from './account';
-// Import AccountType as a type
-import type { AccountType } from '../../../types/account'; // Assuming AccountType is exported from here
+// Use the same AccountType definition as used in the Account class for consistency
+import type { AccountSystemType as AccountType } from '@db/schema.ts'; // Or from where Account.type is defined
 import { Journal } from './journal';
 import { Transaction } from './transaction';
+import Decimal from 'decimal.js';
 
 export class Ledger {
   /** The owning entity’s identifier */
-  private entityId: string;
+  private readonly entityId: string;
 
-  /** Map of accountId → Account */
+  /** Map of accountId (Account.id - UUID) → Account instance */
   private accounts: Map<string, Account> = new Map();
 
-  /** Map of journalId → Journal */
+  /** Map of journalId (Journal.id - UUID) → Journal instance */
   private journals: Map<string, Journal> = new Map();
 
-  /** All recorded transactions for this ledger */
-  private transactions: Transaction[] = [];
+  /** * All transactions that have been successfully recorded and have affected account balances.
+   * These are the transactions that constitute the general ledger for this entity.
+   */
+  private recordedTransactions: Transaction[] = [];
 
   /**
-   * Initialize a new ledger for a single entity.
-   * @param entityId  Identifier of the entity (e.g. company or department)
+   * Initializes a new ledger for a single entity.
+   * @param {string} entityId - Identifier of the entity this ledger belongs to.
+   * @throws {Error} If entityId is not provided.
    */
   constructor(entityId: string) {
+    if (!entityId) {
+      throw new Error("Ledger requires an entityId for initialization.");
+    }
     this.entityId = entityId;
   }
 
   /**
    * Returns the entity ID this ledger belongs to.
+   * @returns {string} The entity ID.
    */
-  getEntityId(): string {
+  public getEntityId(): string {
     return this.entityId;
   }
 
   /**
-   * Add an account to this ledger.
-   * @param account  The account to register
+   * Adds an account to this ledger's chart of accounts.
+   * The account should be an instance of the Account class.
+   * @param {Account} account - The account to register.
+   * @throws {Error} If an account with the same ID already exists or if the account is not active.
    */
-  addAccount(account: Account): void {
-    if (this.accounts.has(account.id)) {
-      console.warn(`Ledger: Account with ID [${account.id}] already exists. Overwriting.`);
+  public addAccount(account: Account): void {
+    if (!account || !account.id) {
+        throw new Error("Invalid account provided to addAccount.");
     }
+    if (this.accounts.has(account.id)) {
+      throw new Error(`Ledger: Account with ID [${account.id}] already exists.`);
+    }
+    // Optionally, only allow adding active accounts to the ledger's CoA
+    // if (!account.isActive) {
+    //   throw new Error(`Ledger: Cannot add inactive account [${account.id}] - "${account.name}" to the ledger.`);
+    // }
     this.accounts.set(account.id, account);
   }
 
   /**
-   * Retrieve an account by its ID.
-   * @param accountId The ID of the account to retrieve.
-   * @returns The Account object if found, otherwise undefined.
+   * Retrieves an account by its ID from the ledger's chart of accounts.
+   * @param {string} accountId - The ID of the account to retrieve.
+   * @returns {Account | undefined} The Account object if found, otherwise undefined.
    */
-  getAccount(accountId: string): Account | undefined {
+  public getAccount(accountId: string): Account | undefined {
     return this.accounts.get(accountId);
   }
 
   /**
-   * List all accounts registered on this ledger.
-   * @returns An array of all Account objects.
+   * Lists all accounts registered on this ledger.
+   * @returns {Account[]} An array of all Account objects.
    */
-  getAllAccounts(): Account[] {
+  public getAllAccounts(): Account[] {
     return Array.from(this.accounts.values());
   }
 
   /**
-   * List accounts filtered by type (e.g. 'asset', 'expense').
-   * @param type The AccountType to filter by.
-   * @returns An array of Account objects matching the specified type.
+   * Lists accounts filtered by type (e.g. 'asset', 'expense').
+   * @param {AccountType} type - The AccountType (AccountSystemType) to filter by.
+   * @returns {Account[]} An array of Account objects matching the specified type.
    */
-  getAccountsByType(type: AccountType): Account[] { // Correctly typed parameter
+  public getAccountsByType(type: AccountType): Account[] {
     return this.getAllAccounts().filter(account => account.type === type);
   }
 
   /**
-   * Add a journal to this ledger.
-   * @param journal The Journal object to add.
+   * Adds a journal to this ledger.
+   * Journals are collections of transactions (e.g., General Journal, Sales Journal).
+   * @param {Journal} journal - The Journal object to add.
+   * @throws {Error} If the journal's entityId does not match the ledger's entityId.
+   * @throws {Error} If a journal with the same ID already exists.
    */
-  addJournal(journal: Journal): void {
+  public addJournal(journal: Journal): void {
+    if (!journal || !journal.id) {
+        throw new Error("Invalid journal provided to addJournal.");
+    }
+    if (journal.entityId !== this.entityId) {
+        throw new Error(`Journal [${journal.id}] for entity [${journal.entityId}] cannot be added to ledger for entity [${this.entityId}].`);
+    }
     if (this.journals.has(journal.id)) {
-      console.warn(`Ledger: Journal with ID [${journal.id}] already exists. Overwriting.`);
+      throw new Error(`Ledger: Journal with ID [${journal.id}] already exists.`);
     }
     this.journals.set(journal.id, journal);
   }
 
   /**
-   * Retrieve a journal by its ID.
-   * @param journalId The ID of the journal to retrieve.
-   * @returns The Journal object if found, otherwise undefined.
+   * Retrieves a journal by its ID.
+   * @param {string} journalId - The ID of the journal to retrieve.
+   * @returns {Journal | undefined} The Journal object if found, otherwise undefined.
    */
-  getJournal(journalId: string): Journal | undefined {
+  public getJournal(journalId: string): Journal | undefined {
     return this.journals.get(journalId);
   }
 
   /**
-   * Record a transaction.
-   * The transaction must belong to this ledger’s entity, be balanced,
-   * and all its lines must refer to existing accounts in this ledger.
-   * If successful, it applies the transaction lines to the respective accounts.
-   * @param transaction The Transaction object to record.
-   * @returns true if the transaction was successfully recorded and applied; false otherwise.
+   * Records a transaction in the ledger.
+   * The transaction must:
+   * 1. Belong to this ledger’s entity.
+   * 2. Be balanced (debits equal credits).
+   * 3. Be in 'posted' state.
+   * 4. Not already be recorded in this ledger (by ID).
+   * 5. All its lines must refer to accounts existing and active in this ledger.
+   * If successful, it applies the transaction lines to the respective account balances.
+   * @param {Transaction} transaction - The Transaction object to record.
+   * @returns {boolean} True if the transaction was successfully recorded and applied; false otherwise.
+   * @throws {Error} If transaction is null or undefined.
    */
-  recordTransaction(transaction: Transaction): boolean {
-    // Reject transactions for other entities
+  public recordTransaction(transaction: Transaction): boolean {
+    if (!transaction || !transaction.id) {
+        throw new Error("Invalid transaction provided to recordTransaction.");
+    }
+    // 1. Check entity ID
     if (transaction.entityId !== this.entityId) {
-      console.warn(`Ledger: Transaction [${transaction.id}] entity [${transaction.entityId}] does not match ledger entity [${this.entityId}]. Transaction rejected.`);
+      console.warn(`Ledger (Entity: ${this.entityId}): Transaction [${transaction.id}] for entity [${transaction.entityId}] rejected.`);
       return false;
     }
 
-    // Ensure debits = credits
+    // 2. Check if transaction is balanced
     if (!transaction.isBalanced()) {
-      console.warn(`Ledger: Transaction [${transaction.id}] is not balanced. Transaction rejected.`);
+      console.warn(`Ledger (Entity: ${this.entityId}): Transaction [${transaction.id}] is not balanced. Rejected.`);
+      return false;
+    }
+    
+    // 3. Check if transaction status allows recording (must be 'posted')
+    if (transaction.status !== 'posted') {
+      console.warn(`Ledger (Entity: ${this.entityId}): Transaction [${transaction.id}] has status '${transaction.status}'. Only 'posted' transactions can be recorded in the ledger. Rejected.`);
       return false;
     }
 
-    // Verify all accounts in transaction lines exist in this ledger
+    // 4. Check for duplicate transaction ID in this ledger
+    if (this.recordedTransactions.some(rt => rt.id === transaction.id)) {
+        console.warn(`Ledger (Entity: ${this.entityId}): Transaction [${transaction.id}] has already been recorded. Rejected.`);
+        return false;
+    }
+
+    // 5. Verify all accounts in transaction lines exist and are active in this ledger
     for (const line of transaction.lines) {
-      if (!this.accounts.has(line.accountId)) {
-        console.warn(`Ledger: Account [${line.accountId}] in transaction [${transaction.id}] not found in ledger. Transaction rejected.`);
+      const account = this.accounts.get(line.accountId);
+      if (!account) {
+        console.warn(`Ledger (Entity: ${this.entityId}): Account [${line.accountId}] in transaction [${transaction.id}] not found in ledger. Rejected.`);
+        return false;
+      }
+      if (!account.isActive) {
+        console.warn(`Ledger (Entity: ${this.entityId}): Account [${line.accountId}] - "${account.name}" in transaction [${transaction.id}] is inactive. Rejected.`);
         return false;
       }
     }
 
-    // Apply each line to its account
-    // This loop is now safe because we've checked all accounts exist.
+    // All checks passed, apply each line to its account
     transaction.lines.forEach(line => {
-      const account = this.getAccount(line.accountId)!; // '!' is safe due to the check above
+      const account = this.getAccount(line.accountId)!; // Existence and activity checked above
       account.applyTransaction(line.amount, line.isDebit);
     });
 
-    // Persist the transaction
-    this.transactions.push(transaction);
-    // console.log(`Ledger: Transaction [${transaction.id}] recorded successfully for entity [${this.entityId}].`);
+    // Add to the ledger's list of recorded transactions
+    this.recordedTransactions.push(transaction);
     return true;
   }
 
   /**
-   * Get all transactions recorded on this ledger.
-   * @returns An array of all Transaction objects.
+   * Gets all transactions recorded in this ledger.
+   * @returns {Transaction[]} An array of all recorded Transaction objects.
    */
-  getAllTransactions(): Transaction[] {
-    return this.transactions;
+  public getAllRecordedTransactions(): Transaction[] {
+    return this.recordedTransactions;
   }
 
   /**
-   * Get all transactions affecting a specific account.
-   * @param accountId The ID of the account.
-   * @returns An array of Transaction objects that include a line affecting the specified account.
+   * Gets all recorded transactions affecting a specific account.
+   * @param {string} accountId - The ID of the account.
+   * @returns {Transaction[]} An array of Transaction objects.
    */
-  getTransactionsForAccount(accountId: string): Transaction[] {
-    return this.transactions.filter(tx =>
+  public getRecordedTransactionsForAccount(accountId: string): Transaction[] {
+    return this.recordedTransactions.filter(tx =>
       tx.lines.some(line => line.accountId === accountId)
     );
   }
 
   /**
-   * Returns the current balance of the given account.
-   * @param accountId The ID of the account.
-   * @returns The balance of the account, or 0 if the account is not found.
+   * Returns the current balance of a given account in this ledger.
+   * @param {string} accountId - The ID of the account.
+   * @returns {number} The balance of the account, or 0 if the account is not found.
    */
-  getAccountBalance(accountId: string): number {
+  public getAccountBalance(accountId: string): number {
     const account = this.getAccount(accountId);
-    return account ? account.balance : 0;
+    return account ? account.balance : 0; // account.balance is a number getter
   }
 
   /**
-   * Generate a trial balance.
+   * Generates a trial balance for the current state of the ledger.
    * A trial balance lists all accounts and their debit or credit balances.
    * The total debits should equal total credits.
-   * This implementation assumes account.balance reflects the net value,
-   * and account.isDebitNormal() or account.isCreditNormal() determines its typical side.
-   * Abnormal balances (e.g., an asset with a credit balance) will be shown accordingly.
-   * @returns An array of objects, each representing an account's trial balance line.
+   * @returns {Array<{ accountId: string; accountCode: string; accountName: string; debit: number; credit: number; }>} 
+   * An array of objects, each representing an account's trial balance line.
    */
-  generateTrialBalance(): Array<{
-    accountId: string;
+  public generateTrialBalance(): Array<{
+    accountId: string;    // Account UUID
+    accountCode: string;  // User-facing account code
     accountName: string;
     debit: number;
     credit: number;
   }> {
-    return this.getAllAccounts().map(account => {
-      const balance = account.balance; // This is the net balance from the Account object
-      let debitAmount = 0;
-      let creditAmount = 0;
+    const trialBalanceLines = this.getAllAccounts().map(account => {
+      const balance = account.balanceDecimal; // Use Decimal for precision before final conversion
+      let debitAmount = new Decimal(0);
+      let creditAmount = new Decimal(0);
 
-      if (account.isDebitNormal()) { // Typically Assets, Expenses
-        if (balance >= 0) {
+      if (account.isDebitNormal()) { // Typically Assets, Expenses, Draws
+        if (balance.isPositive() || balance.isZero()) {
           debitAmount = balance;
-        } else {
-          // Abnormal balance for a debit-normal account (e.g., Asset with a credit balance)
-          creditAmount = Math.abs(balance);
+        } else { // Negative balance for a debit-normal account means it has a credit balance (abnormal)
+          creditAmount = balance.abs();
         }
-      } else if (account.isCreditNormal()) { // Typically Liabilities, Equity, Income
-        if (balance >= 0) {
-          // Assuming positive balance here means a natural credit balance for these types
+      } else { // Credit Normal (Liabilities, Equity, Income, Contra-Assets)
+        if (balance.isPositive() || balance.isZero()) {
+          // For credit normal accounts, a positive balance on our internal Decimal representation
+          // (where credits might be added as positive) means it's a credit balance.
           creditAmount = balance;
-        } else {
-          // Abnormal balance for a credit-normal account (e.g., Liability with a debit balance)
-          debitAmount = Math.abs(balance);
+        } else { // Negative balance for a credit-normal account means it has a debit balance (abnormal)
+          debitAmount = balance.abs();
         }
-      } else {
-        // Should not happen if all accounts have a defined normal balance side (debit or credit)
-        // If balance is non-zero and type is unknown how to classify, log or place based on sign.
-        if (balance > 0) debitAmount = balance;
-        if (balance < 0) creditAmount = Math.abs(balance);
-         console.warn(`Account [${account.id}] - ${account.name} has an indeterminate normal balance type for trial balance.`);
       }
 
       return {
         accountId: account.id,
+        accountCode: account.code,
         accountName: account.name,
-        debit: debitAmount,
-        credit: creditAmount,
+        debit: debitAmount.toNumber(),
+        credit: creditAmount.toNumber(),
       };
     });
+    
+    // Optional: Verify trial balance totals
+    let totalDebits = new Decimal(0);
+    let totalCredits = new Decimal(0);
+    trialBalanceLines.forEach(line => {
+      totalDebits = totalDebits.plus(line.debit);
+      totalCredits = totalCredits.plus(line.credit);
+    });
+
+    if (!totalDebits.equals(totalCredits)) {
+      console.warn(`Ledger (Entity: ${this.entityId}): Trial Balance is out of balance! Debits: ${totalDebits.toString()}, Credits: ${totalCredits.toString()}`);
+      // Depending on strictness, you might throw an error here or return a flag.
+    }
+
+    return trialBalanceLines;
   }
 }

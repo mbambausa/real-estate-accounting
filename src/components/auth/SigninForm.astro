@@ -5,7 +5,8 @@ import Alert from '@components/ui/Alert.astro';
 
 interface Props {
   error?: string; // Error message to display
-  // Add other props if needed, e.g., for initial email value
+  // Add other props if needed, e.g., for initial email value if redirecting back with error
+  // initialEmail?: string; 
 }
 
 const { error } = Astro.props;
@@ -16,75 +17,72 @@ const { error } = Astro.props;
   action="/api/auth/callback/credentials?redirect=true&callbackUrl=/app/dashboard"
   class="space-y-6"
 >
-  {/* CSRF Token Handling:
-    Auth.js v5 (used by auth-astro) typically handles CSRF protection for its POST routes
-    (like /api/auth/callback/credentials) automatically, often by checking the Origin header
-    or using a double-submit cookie pattern managed by the library.
-    Manually adding a CSRF token, especially from an outdated cookie name like "next-auth.csrf-token",
-    is incorrect and likely to cause issues.
-    If auth-astro requires manual CSRF token submission (which is less common for its core routes),
-    its documentation would specify how to obtain the correct token.
-    For now, we assume it's handled by the library and the input is removed.
+  {/* CSRF Token Handling for Auth.js v5:
+    Auth.js (and by extension, integrations like a potential future `auth-astro` for v5) 
+    typically handles CSRF protection for its own POST API routes (like /api/auth/callback/*)
+    internally. This is often done by checking the Origin header or using a 
+    double-submit cookie pattern that the library manages.
+    Therefore, manually adding a CSRF token input field is usually not required for these
+    core Auth.js routes and can sometimes interfere if not done according to the library's specific mechanism.
+    Always refer to the specific Auth.js adapter/integration documentation if in doubt.
+    For now, we assume it's handled automatically by Auth.js.
   */}
   
   {error && (
-    <Alert type="error" dismissible={true}> {/* Made error alert dismissible */}
+    <Alert type="error" dismissible={true} class="mb-4">
       {error}
     </Alert>
   )}
   
   <div>
-    <label for="email-signin" class="block text-sm font-medium text-gray-700 mb-1">
+    <label for="email-signin-component" class="block text-sm font-medium text-gray-700 mb-1.5">
       Email Address
     </label>
     <input
-      id="email-signin"
-      name="email"
+      id="email-signin-component" name="email"
       type="email"
       autocomplete="email"
       required
       placeholder="you@example.com"
-      class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+      class="mt-1 block w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition-colors"
+      aria-describedby="email-error"
     />
-  </div>
+    </div>
   
   <div>
-    <label for="password-signin" class="block text-sm font-medium text-gray-700 mb-1">
+    <label for="password-signin-component" class="block text-sm font-medium text-gray-700 mb-1.5">
       Password
     </label>
     <input
-      id="password-signin"
+      id="password-signin-component"
       name="password"
       type="password"
       autocomplete="current-password"
       required
       placeholder="••••••••"
-      class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+      class="mt-1 block w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition-colors"
+      aria-describedby="password-error"
     />
   </div>
   
-  <div class="flex items-center justify-between text-sm">
+  <div class="flex items-center justify-between text-sm pt-1">
     <div class="flex items-center">
-      <input
-        id="remember_me_signin"
-        name="remember_me"
-        type="checkbox"
-        class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-      />
-      <label for="remember_me_signin" class="ml-2 block text-gray-700">
-        Remember me
-      </label>
-    </div>
+      {/* "Remember me" functionality depends on session strategy and duration.
+          Auth.js sessions are typically controlled by maxAge. This checkbox is more of a UI hint.
+      */}
+      </div>
     
     <div>
-      <a href="/auth/forgot-password" class="font-medium text-primary-600 hover:text-primary-500">
+      {/* Placeholder for Forgot Password link - implement if needed */}
+      {/* <a href="/auth/forgot-password" class="font-medium text-primary-600 hover:text-primary-500 hover:underline">
         Forgot your password?
-      </a>
+      </a> 
+      */}
     </div>
   </div>
   
-  <div>
-    <Button type="submit" variant="primary" fullWidth={true} size="md">
+  <div class="pt-2">
+    <Button type="submit" variant="primary" fullWidth={true} size="lg">
       Sign In
     </Button>
   </div>

@@ -1,0 +1,30 @@
+---
+// src/components/auth/AuthState.astro
+import { getCurrentUserId } from '@lib/auth';
+
+// Props for more flexible usage
+interface Props {
+  fallback?: 'redirect' | 'render'; // What to do if not authenticated
+  redirectUrl?: string; // Where to redirect if fallback is 'redirect'
+}
+
+const { 
+  fallback = 'render',
+  redirectUrl = '/auth/signin'
+} = Astro.props;
+
+// Check authentication status
+const userId = await getCurrentUserId(Astro.request, Astro.locals.runtime.env);
+const isAuthenticated = !!userId;
+
+// Handle redirect if needed
+if (!isAuthenticated && fallback === 'redirect') {
+  return Astro.redirect(redirectUrl);
+}
+---
+
+{isAuthenticated ? (
+  <slot name="authenticated" />
+) : (
+  <slot name="unauthenticated" />
+)}

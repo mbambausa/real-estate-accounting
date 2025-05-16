@@ -7,24 +7,54 @@ interface Props {
 }
 
 const { title } = Astro.props;
+
+// Determine if UnoCSS reset was injected
+const unoResetLikelyInjected = true; // Set based on your UnoCSS config `injectReset: true`
 ---
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{title} | Real Estate Accounting</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <!-- Load Alpine.js -->
+    
+    <!-- UnoCSS with `injectReset: true` typically injects its reset styles directly.
+      If you were not using injectReset, or wanted to be very explicit, 
+      you might link to a normalized CSS file here. -->
+
     <script src="/alpine.min.js" defer is:inline></script>
+
+    <style>
+      /* Basic body styling to ensure full height for centering flex items */
+      body {
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+      }
+      /* Ensure the main content area can grow if needed, but centered by default */
+      .auth-content-container {
+        display: flex;
+        flex-direction: column;
+        flex-grow: 1;
+        align-items: center;
+        justify-content: center;
+      }
+    </style>
   </head>
-  <body class="min-h-screen bg-gray-50 flex items-center justify-center">
-    <div class="w-full max-w-md p-8 bg-white rounded-lg shadow-md">
-      <div class="text-center mb-6">
-        <h1 class="text-2xl font-bold text-gray-900">{title}</h1>
-      </div>
-      <slot />
+  <body class="bg-slate-50 text-slate-800 antialiased">
+    <div class="auth-content-container px-4 py-8 sm:px-6 lg:px-8">
+      <main class="w-full max-w-md">
+        <!-- Optional: Logo or App Name can go here, above the card -->
+        <div class="bg-white p-6 sm:p-8 rounded-xl shadow-xl border border-slate-200">
+          <!-- Title is now part of the slot content from signin/signup pages for more flexibility -->
+          <slot />
+        </div>
+        <p class="mt-8 text-center text-xs text-slate-500">
+          &copy; {new Date().getFullYear()} Real Estate Accounting. All rights reserved.
+        </p>
+      </main>
     </div>
   </body>
 </html>

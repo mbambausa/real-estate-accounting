@@ -1,7 +1,14 @@
 # wrangler.toml
 name = "real-estate-accounting"
 main = "./dist/_worker.js"
-compatibility_date = "2024-05-01"
+compatibility_date = "2025-05-16"
+
+# Correct way to specify build output directory
+pages_build_output_dir = "dist"
+
+# Site configuration for static assets
+[site]
+bucket = "./dist"
 
 # D1 database configuration
 [[d1_databases]]
@@ -12,6 +19,22 @@ database_id = "3198e043-80f0-4d51-b849-4d3a78380039"
 # KV namespace for session storage
 [[kv_namespaces]]
 binding = "SESSION"
-# For local development, use a simpler placeholder:
-id = "local-dev-session-kv"
-# For production, replace with your real KV namespace ID from Cloudflare Dashboard
+id = "b4591e5e144843f6837619edb455c52c"
+
+# KV namespace for reports cache
+[[kv_namespaces]]
+binding = "REPORTS_CACHE"
+id = "a5892e1bcc7b43d8ad84b9ffa89c59c1"
+
+# R2 bucket for document attachments
+[[r2_buckets]]
+binding = "DOCUMENTS"
+bucket_name = "real-estate-documents"
+
+# Environment variables (non-secrets)
+[vars]
+ENVIRONMENT = "production"
+
+# Local development settings
+[dev]
+port = 8788

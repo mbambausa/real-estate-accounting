@@ -1,0 +1,274 @@
+---
+// src/pages/app/entities/[id]/parent.astro
+import AppLayout from "../../../../layouts/AppLayout.astro";
+import Alert from "../../../../components/ui/Alert.astro";
+import Button from "../../../../components/ui/Button.astro";
+import EntitySelector from "../../../../components/entities/EntitySelector.astro";
+import { createEntityService } from "../../../../lib/services/entity-service";
+import { AppError, ErrorCode } from "../../../../utils/errors";
+import { getSession } from "../../../../lib/auth";
+import type { Entity } from "../../../../types/entity";
+import type { APIContext } from "astro";
+
+// Type assertion for locals if not globally typed
+const locals = Astro.locals as App.Locals;
+
+// Get the ID from the path parameters
+const rawEntityId = Astro.params.id;
+
+// Early check for undefined - if it's undefined, redirect
+if (!rawEntityId) {
+  return Astro.redirect('/app/entities?error=EntityIDMissing');
+}
+
+// At this point, TypeScript knows rawEntityId is definitely a string.
+// We can assign it to a new variable, and TypeScript will infer the correct type.
+const entityId = rawEntityId; // TypeScript now correctly infers 'string' here
+
+// 1. Get session and validate authentication
+const session = await getSession(Astro.request, locals.runtime?.env);
+const userId = session?.user?.id;
+
+if (!userId) {
+  return Astro.redirect(`/auth/signin?error=Unauthorized&redirect=/app/entities/${entityId}/parent`);
+}
+
+// Add type assertion for userId - this fixes the TypeScript error
+const userIdString = userId as string;
+
+// 2. Get D1 client from Astro.locals
+const db = locals.runtime?.env?.DB;
+if (!db) {
+  console.error("D1 Database binding (DB) not found in Astro.locals.runtime.env.");
+  Astro.response.status = 500;
+}
+
+// Check for success or error messages from redirects
+const successMessage = Astro.url.searchParams.get('success');
+const errorMessageFromQuery = Astro.url.searchParams.get('error');
+
+const entityService = db ? createEntityService(db) : null;
+
+let entity: Entity | null = null;
+let currentParentEntity: Entity | null = null;
+let availableParentEntities: Entity[] = [];
+let pageError: string | null = null;
+
+if (entityService) {
+  try {
+    // Use the properly typed entityId variable and userIdString
+    entity = await entityService.getEntityById(entityId, userIdString); // Using userIdString here fixes the error
+    if (!entity) {
+      throw new AppError(ErrorCode.NOT_FOUND, 'Entity not found or access denied.', 404);
+    }
+
+    if (entity.parent_id) {
+      currentParentEntity = await entityService.getEntityById(entity.parent_id, userIdString);
+    }
+
+    // Fetch all entities for the parent selector, then filter out the current entity and its descendants
+    const allUserEntities = await entityService.getAllEntities(userIdString);
+    const descendantIds = new Set<string>();
+    async function collectDescendants(currentEntityId: string) {
+      if (descendantIds.has(currentEntityId)) return;
+      descendantIds.add(currentEntityId);
+      // Need to fetch children for the current entity being processed in recursion
+      if (entityService) {
+        const children = await entityService.getChildEntities(currentEntityId, userIdString);
+        for (const child of children) {
+          if (child.id) { // Add a guard for child.id
+            await collectDescendants(child.id);
+          }
+        }
+      }
+    }
+    await collectDescendants(entity.id); // Start collecting from the current entity
+
+    availableParentEntities = allUserEntities.filter(e => e.id !== undefined && !descendantIds.has(e.id));
+
+  } catch (err: any) {
+    console.error(`Error fetching data for entity ${entityId} parent management:`, err);
+    pageError = err.message || 'An unexpected error occurred.';
+    if (err instanceof AppError && err.status === 404) {
+      Astro.response.status = 404;
+    } else {
+      Astro.response.status = 500;
+    }
+  }
+} else if (!db) {
+  pageError = "Database service is unavailable. Please contact support.";
+  Astro.response.status = 500;
+}
+
+const formatBusinessTypeDisplay = (type?: string | null) => {
+  if (!type) return 'N/A';
+  return type.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+};
+---
+
+<AppLayout title={`Manage Parent for ${entity?.name || 'Entity'}`}>
+  <div class="container mx-auto px-4 py-8 max-w-2xl">
+    {pageError && !entity && (
+      <div class="flex flex-col items-center justify-center py-12">
+        <Alert type="error" class="mb-6">{pageError}</Alert>
+        <Button href="/app/entities" variant="outline">Back to Entities List</Button>
+      </div>
+    )}
+
+    {entity && !pageError && (
+      <>
+        <div class="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h1 class="text-3xl font-bold text-gray-800">Manage Parent for: {entity.name}</h1>
+            <p class="text-gray-600 mt-1">Define or change the parent entity in the hierarchy.</p>
+          </div>
+          <div class="flex gap-2 flex-shrink-0">
+            <Button href={`/app/entities/${entity.id}`} variant="outline">Back to Entity Details</Button>
+          </div>
+        </div>
+
+        {successMessage && <Alert type="success" class="mb-6" dismissible={true}>{decodeURIComponent(successMessage)}</Alert>}
+        {errorMessageFromQuery && <Alert type="error" class="mb-6" dismissible={true}>{decodeURIComponent(errorMessageFromQuery)}</Alert>}
+        {pageError && <Alert type="error" class="mb-6">{pageError}</Alert>}
+
+        <div class="bg-white shadow-xl rounded-xl overflow-hidden border border-gray-200 mb-8">
+          <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+            <h2 class="text-lg font-semibold text-gray-700">Current Parent Entity</h2>
+          </div>
+          <div class="p-6">
+            {currentParentEntity ? (
+              <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                  <a href={`/app/entities/${currentParentEntity.id}`} class="text-xl font-medium text-primary-600 hover:underline">
+                    {currentParentEntity.name}
+                  </a>
+                  <p class="text-sm text-gray-500 mt-1">
+                    {currentParentEntity.legal_name && `Legal: ${currentParentEntity.legal_name} | `}
+                    Type: {formatBusinessTypeDisplay(currentParentEntity.business_type)}
+                  </p>
+                </div>
+                <form method="POST" action={`/api/entities/${entity.id}`} class="remove-parent-form mt-4 sm:mt-0">
+                  <input type="hidden" name="_method" value="PUT" />
+                  <input type="hidden" name="parent_id" value="" /> {/* Sending empty string for parent_id to remove it */}
+                  <Button type="submit" variant="danger" size="sm">Remove Parent Link</Button>
+                </form>
+              </div>
+            ) : (
+              <p class="text-gray-600 text-center py-4">This entity currently has no parent (it's a top-level entity).</p>
+            )}
+          </div>
+        </div>
+
+        <div class="bg-white shadow-xl rounded-xl overflow-hidden border border-gray-200">
+          <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+            <h2 class="text-lg font-semibold text-gray-700">
+              {currentParentEntity ? 'Change Parent Entity' : 'Set Parent Entity'}
+            </h2>
+          </div>
+          <div class="p-6">
+            {availableParentEntities.length > 0 || currentParentEntity ? ( <form method="POST" action={`/api/entities/${entity.id}`} class="space-y-6 set-parent-form">
+                <input type="hidden" name="_method" value="PUT" />
+                <EntitySelector
+                  entities={availableParentEntities}
+                  selectedId={entity.parent_id || ""}
+                  name="parent_id" id="parent_id_selector_manage"
+                  label="Select New Parent Entity"
+                  placeholder="None (Make this a top-level entity)"
+                  showLegalName={true}
+                  class="mt-1"
+                  excludeId={entity.id} />
+                <p class="text-xs text-gray-500">
+                  Selecting "None" will make this a top-level entity. Ensure you are not creating circular dependencies.
+                </p>
+                <div class="flex justify-end pt-4">
+                  <Button type="submit" variant="primary">
+                    {currentParentEntity ? 'Update Parent Entity' : 'Set Parent Entity'}
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <p class="text-gray-600 text-center py-4">
+                There are no other available entities to set as a parent. To create a parent-child relationship, you may need to create more entities first.
+              </p>
+            )}
+          </div>
+        </div>
+      </>
+    )}
+  </div>
+</AppLayout>
+
+<script define:vars={{ entityId: entity?.id, currentPath: Astro.url.pathname }}>
+  document.addEventListener('DOMContentLoaded', () => {
+    // Client-side fetch for "Remove Parent" form
+    const removeParentForms = document.querySelectorAll('.remove-parent-form');
+    removeParentForms.forEach(form => {
+      form.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        if (!confirm('Are you sure you want to remove the parent relationship? This will make the entity a top-level entity.')) {
+          return;
+        }
+        const submitButton = form.querySelector('button[type="submit"]');
+        if (submitButton) {
+            submitButton.disabled = true;
+            submitButton.textContent = 'Removing...';
+        }
+
+        const formData = new FormData(form);
+        // parent_id is already set to "" by the hidden input
+        const data = { parent_id: null }; // Explicitly set to null for the API
+
+        try {
+          const response = await fetch(form.action, {
+            method: 'PUT', // Since _method is PUT
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+          });
+          if (response.ok) {
+            window.location.href = `${currentPath}?success=Parent relationship removed.`;
+          } else {
+            const errorResult = await response.json();
+            window.location.href = `${currentPath}?error=${encodeURIComponent(errorResult.error || 'Failed to remove parent.')}`;
+          }
+        } catch (error) {
+          window.location.href = `${currentPath}?error=${encodeURIComponent('An unexpected error occurred.')}`;
+        }
+      });
+    });
+
+    // Client-side fetch for "Set/Change Parent" form
+    const setParentForms = document.querySelectorAll('.set-parent-form');
+    setParentForms.forEach(form => {
+      form.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        const submitButton = form.querySelector('button[type="submit"]');
+        if (submitButton) {
+            submitButton.disabled = true;
+            submitButton.textContent = 'Saving...';
+        }
+
+        const formData = new FormData(form);
+        const parentIdValue = formData.get('parent_id');
+        const data = {
+          parent_id: parentIdValue === "" ? null : parentIdValue // Convert empty string to null
+        };
+
+        try {
+          const response = await fetch(form.action, {
+            method: 'PUT', // Since _method is PUT
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+          });
+          if (response.ok) {
+            window.location.href = `${currentPath}?success=Parent relationship updated.`;
+          } else {
+            const errorResult = await response.json();
+            window.location.href = `${currentPath}?error=${encodeURIComponent(errorResult.error || 'Failed to update parent.')}`;
+          }
+        } catch (error) {
+          window.location.href = `${currentPath}?error=${encodeURIComponent('An unexpected error occurred.')}`;
+        }
+      });
+    });
+  });
+</script>

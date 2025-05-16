@@ -1,0 +1,113 @@
+---
+// src/pages/app/accounts/index.astro
+import AppLayout from "../../../layouts/AppLayout.astro";
+import AccountList from "../../../components/accounts/AccountList.astro"; // This component will also need updates
+import Button from "../../../components/ui/Button.astro";
+import Alert from "../../../components/ui/Alert.astro"; // Assuming Alert component exists
+import { createAccountService } from "../../../lib/services/account-service";
+import { getSession } from "../../../lib/auth"; // Ensure this path is correct
+import type { DbChartOfAccount } from "../../../db/schema"; // Use DbChartOfAccount from schema
+import type { APIContext } from "astro";
+
+// Type assertion for locals if not globally typed
+const locals = Astro.locals as App.Locals;
+
+// 1. Get session and validate authentication
+const session = await getSession(Astro.request, locals.runtime?.env);
+const userId = session?.user?.id;
+
+if (!userId) {
+  return Astro.redirect('/auth/signin?error=Unauthorized&redirect=/app/accounts');
+}
+
+// 2. Get D1 client from Astro.locals
+const db = locals.runtime?.env?.DB;
+if (!db) {
+  console.error("D1 Database binding (DB) not found in Astro.locals.runtime.env.");
+  Astro.response.status = 500;
+}
+
+// Check if we have success or error messages from redirects
+const successMessage = Astro.url.searchParams.get('success');
+const errorMessageFromQuery = Astro.url.searchParams.get('error');
+
+const accountService = db ? createAccountService(db) : null;
+
+let accounts: DbChartOfAccount[] = [];
+let pageError: string | null = null;
+
+if (accountService) {
+  try {
+    // 3. Pass userId to getAllAccounts
+    accounts = await accountService.getAllAccounts(userId);
+  } catch (err: any) {
+    console.error('Error fetching accounts:', err);
+    pageError = err.message || "Failed to load accounts. Please try again later.";
+    if (err.status === 401) {
+        return Astro.redirect('/auth/signin?error=SessionExpired&redirect=/app/accounts');
+    }
+     Astro.response.status = err.status || 500;
+  }
+} else if (!db) {
+    pageError = "Database service is unavailable. Please contact support.";
+    Astro.response.status = 500;
+}
+
+// Account types for potential filtering (if AccountList supports it)
+// import { AccountSystemType } from "../../../types/account"; // Use AccountSystemType from schema/types
+// const accountTypes: AccountSystemType[] = ["asset", "liability", "equity", "income", "expense"];
+---
+
+<AppLayout title="Chart of Accounts">
+  <div class="container mx-auto px-4 py-8">
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+      <h1 class="text-3xl font-bold text-gray-800">Chart of Accounts</h1>
+      <div class="flex gap-3 flex-shrink-0">
+        <Button href="/app/accounts/new" variant="primary">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+          </svg>
+          Add New Account
+        </Button>
+        <Button href="/app/accounts/chart" variant="outline">
+          View Hierarchy
+        </Button>
+      </div>
+    </div>
+
+    {successMessage && (
+      <Alert type="success" class="mb-6" dismissible={true}>
+        {decodeURIComponent(successMessage)}
+      </Alert>
+    )}
+    {errorMessageFromQuery && (
+      <Alert type="error" class="mb-6" dismissible={true}>
+        {decodeURIComponent(errorMessageFromQuery)}
+      </Alert>
+    )}
+    {pageError && !errorMessageFromQuery && (
+      <Alert type="error" class="mb-6">
+        {pageError}
+      </Alert>
+    )}
+
+    {accountService && !pageError ? (
+      <AccountList 
+        accounts={accounts} 
+        showActions={true} />
+    ) : !pageError ? (
+      <div class="p-6 text-center text-gray-500 bg-white shadow-lg rounded-xl border border-gray-200">
+          <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+          <h3 class="mt-2 text-sm font-medium text-gray-900">No accounts found</h3>
+          <p class="mt-1 text-sm text-gray-500">Get started by creating your first account.</p>
+          <div class="mt-6">
+            <Button href="/app/accounts/new" variant="primary" size="sm">
+              Create Account
+            </Button>
+          </div>
+        </div>
+    ) : null}
+  </div>
+</AppLayout>

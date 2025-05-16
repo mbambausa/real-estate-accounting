@@ -1,0 +1,494 @@
+---
+// src/pages/app/entities/[id]/accounts.astro
+import AppLayout from "../../../../layouts/AppLayout.astro";
+import Alert from "../../../../components/ui/Alert.astro";
+import Button from "../../../../components/ui/Button.astro";
+import { createEntityService } from "../../../../lib/services/entity-service";
+import { createEntityAccountService, type JoinedEntityAccount, type EntityAccountInput } from "../../../../lib/services/entity-account-service";
+import { createAccountService } from "../../../../lib/services/account-service";
+import type { DbChartOfAccount } from "../../../../db/schema";
+import type { Entity } from "../../../../types/entity";
+import { AppError, ErrorCode } from "../../../../utils/errors";
+import { getSession } from "../../../../lib/auth";
+import type { APIContext } from "astro";
+
+// Type assertion for locals if not globally typed
+const locals = Astro.locals as App.Locals;
+
+const entityIdFromPath = Astro.params.id;
+
+// 1. Get session and validate authentication - FIX: Add second argument
+const session = await getSession(Astro.request, locals.runtime?.env);
+const userId = session?.user?.id;
+
+if (!userId) {
+  return Astro.redirect(`/auth/signin?error=Unauthorized&redirect=/app/entities/${entityIdFromPath}/accounts`);
+}
+
+if (!entityIdFromPath) {
+  return Astro.redirect('/app/entities?error=EntityIDMissing');
+}
+
+// 2. Get D1 client from Astro.locals
+const db = locals.runtime?.env?.DB;
+if (!db) {
+  console.error("D1 Database binding (DB) not found in Astro.locals.runtime.env.");
+  Astro.response.status = 500;
+}
+
+// Check for success or error messages from redirects
+const successMessage = Astro.url.searchParams.get('success');
+const errorMessageFromQuery = Astro.url.searchParams.get('error');
+
+const entityService = db ? createEntityService(db) : null;
+const entityAccountService = db ? createEntityAccountService(db) : null;
+const accountService = db ? createAccountService(db) : null;
+
+let entity: Entity | null = null;
+let linkedEntityAccounts: JoinedEntityAccount[] = [];
+let allUserStandardAccounts: DbChartOfAccount[] = [];
+let availableStandardAccounts: DbChartOfAccount[] = []; // Accounts not yet linked to this entity
+let pageError: string | null = null;
+
+if (db && entityService && entityAccountService && accountService) {
+  try {
+    entity = await entityService.getEntityById(entityIdFromPath, userId);
+    if (!entity) {
+      throw new AppError(ErrorCode.NOT_FOUND, 'Entity not found or access denied.', 404);
+    }
+
+    linkedEntityAccounts = await entityAccountService.getAccountsForEntity(entity.id, userId);
+    allUserStandardAccounts = await accountService.getAllAccounts(userId);
+
+    const linkedStandardAccountIds = new Set(linkedEntityAccounts.map(lea => lea.account_id));
+    availableStandardAccounts = allUserStandardAccounts.filter(stdAcc => !linkedStandardAccountIds.has(stdAcc.id) && stdAcc.is_active === 1);
+
+  } catch (err: any) {
+    console.error(`Error fetching data for entity ${entityIdFromPath} accounts:`, err);
+    pageError = err.message || 'An unexpected error occurred.';
+    if (err instanceof AppError && err.status === 404) {
+      Astro.response.status = 404;
+    } else {
+      Astro.response.status = 500;
+    }
+  }
+} else if (!db) {
+  pageError = "Database service is unavailable. Please contact support.";
+  Astro.response.status = 500;
+}
+
+const accountSystemTypes = ["asset", "liability", "equity", "income", "expense"] as const;
+
+// Group accounts by type for display in modals and lists
+const groupAccountsByType = (accounts: Array<JoinedEntityAccount | DbChartOfAccount>) => {
+  const grouped: Record<string, Array<JoinedEntityAccount | DbChartOfAccount>> = {};
+  accountSystemTypes.forEach(type => grouped[type] = []);
+  accounts.forEach(acc => {
+    const typeKey = 'account_type' in acc ? acc.account_type : acc.type; // Handle both JoinedEntityAccount and DbChartOfAccount
+    if (grouped[typeKey]) {
+      grouped[typeKey].push(acc);
+    } else {
+      grouped[typeKey] = [acc]; // Should not happen if accountSystemTypes is exhaustive
+    }
+  });
+  return grouped;
+};
+
+const linkedAccountsByType = groupAccountsByType(linkedEntityAccounts);
+const availableAccountsByType = groupAccountsByType(availableStandardAccounts);
+
+const getTypeColor = (type?: string | null) => {
+  switch (type) {
+    case 'asset': return 'blue';
+    case 'liability': return 'orange';
+    case 'equity': return 'purple';
+    case 'income': return 'green';
+    case 'expense': return 'red';
+    default: return 'gray';
+  }
+};
+---
+
+<AppLayout title={`${entity?.name || 'Entity'} Accounts Management`}>
+  <div class="container mx-auto px-4 py-8">
+    {pageError && !entity && (
+      <div class="flex flex-col items-center justify-center py-12">
+        <Alert type="error" class="mb-6">{pageError}</Alert>
+        <Button href="/app/entities" variant="outline">Back to Entities List</Button>
+      </div>
+    )}
+
+    {entity && !pageError && (
+      <>
+        <div class="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h1 class="text-3xl font-bold text-gray-800">Manage Accounts for: {entity.name}</h1>
+            <p class="text-gray-600 mt-1">Link accounts from your Chart of Accounts to this entity.</p>
+          </div>
+          <div class="flex gap-2 flex-shrink-0">
+            <Button href={`/app/entities/${entity.id}`} variant="outline">Back to Entity</Button>
+            <Button href="/app/entities" variant="secondary">All Entities</Button>
+          </div>
+        </div>
+
+        {successMessage && <Alert type="success" class="mb-6" dismissible={true}>{decodeURIComponent(successMessage)}</Alert>}
+        {errorMessageFromQuery && <Alert type="error" class="mb-6" dismissible={true}>{decodeURIComponent(errorMessageFromQuery)}</Alert>}
+        {pageError && <Alert type="error" class="mb-6">{pageError}</Alert>}
+        
+        <div class="bg-white shadow-xl rounded-xl overflow-hidden border border-gray-200 mb-8">
+          <div class="px-6 py-4 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-gray-50">
+            <h2 class="text-lg font-semibold text-gray-700">Linked Accounts</h2>
+            <div class="flex gap-2 flex-wrap">
+              <Button id="add-account-modal-button" variant="primary" size="sm">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1.5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" /></svg>
+                Link Account
+              </Button>
+              <form method="POST" action={`/api/entities/${entity.id}/accounts/initialize`} class="inline-block" id="initialize-accounts-form">
+                <Button type="submit" variant="outline" size="sm">Initialize Standard</Button>
+              </form>
+            </div>
+          </div>
+          
+          {linkedEntityAccounts.length === 0 ? (
+            <div class="p-8 text-center text-gray-500">
+              <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <h3 class="mt-2 text-sm font-medium text-gray-900">No accounts linked yet.</h3>
+              <p class="mt-1 text-sm text-gray-500">Link accounts from your Chart of Accounts to start recording transactions for this entity.</p>
+            </div>
+          ) : (
+            <div class="overflow-x-auto">
+              <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Code</th>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Name</th>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Type</th>
+                    <th class="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                    <th class="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                  {linkedEntityAccounts.map(linkedAcc => (
+                    <tr data-linked-account-id={linkedAcc.id} 
+                        data-account-id={linkedAcc.account_id} 
+                        data-custom-name={linkedAcc.custom_name || ''}
+                        data-is-active={linkedAcc.is_active.toString()}
+                        data-recovery-type={linkedAcc.recovery_type || ''}
+                        data-recovery-percentage={(linkedAcc.recovery_percentage ?? '').toString()}
+                        class="hover:bg-gray-50 transition-colors">
+                      <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{linkedAcc.account_code}</td>
+                      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                        {linkedAcc.custom_name || linkedAcc.account_name}
+                        {linkedAcc.custom_name && <span class="text-xs text-gray-400 ml-1 block">(Std: {linkedAcc.account_name})</span>}
+                      </td>
+                      <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <span class={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-${getTypeColor(linkedAcc.account_type)}-100 text-${getTypeColor(linkedAcc.account_type)}-800`}>
+                          {linkedAcc.account_type}
+                          {linkedAcc.account_subtype && ` (${linkedAcc.account_subtype})`}
+                        </span>
+                        {linkedAcc.account_is_recoverable === 1 && (
+                          <span class="block mt-1 text-xs text-green-700">
+                            {linkedAcc.recovery_percentage ?? 100}% Recoverable
+                            {linkedAcc.recovery_type && ` (${linkedAcc.recovery_type})`}
+                          </span>
+                        )}
+                      </td>
+                      <td class="px-6 py-4 whitespace-nowrap text-sm">
+                        <span class={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${linkedAcc.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                          {linkedAcc.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                        <Button type="button" variant="icon" size="sm" class="edit-linked-account-button text-indigo-600 hover:text-indigo-800" title="Edit Link">
+                          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fill-rule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clip-rule="evenodd" /></svg>
+                        </Button>
+                        <form method="POST" action={`/api/entities/${entity.id}/accounts/${linkedAcc.id}`} class="inline-block delete-linked-account-form">
+                          <input type="hidden" name="_method" value="DELETE" />
+                          <Button type="submit" variant="icon" size="sm" class="text-red-600 hover:text-red-800" title="Remove Link">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
+                          </Button>
+                        </form>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </>
+    )}
+
+    {/* Add Account Link Modal (hidden by default) */}
+    <div id="add-account-link-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+      <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+        <div id="add-modal-backdrop" class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+        <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+          <form method="POST" action={`/api/entities/${entity?.id}/accounts`} id="add-account-link-form">
+            <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+              <div class="sm:flex sm:items-start">
+                <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                  <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">Link Account to {entity?.name}</h3>
+                  <div class="mt-4 space-y-4">
+                    <div>
+                      <label for="available_account_id_selector" class="block text-sm font-medium text-gray-700">Select Standard Account</label>
+                      <select name="account_id" id="available_account_id_selector" required class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md bg-white">
+                        <option value="">-- Select an Account --</option>
+                        {availableStandardAccounts.map(stdAcc => (
+                          <option value={stdAcc.id}>{stdAcc.code} - {stdAcc.name} ({stdAcc.type})</option>
+                        ))}
+                      </select>
+                      {availableStandardAccounts.length === 0 && <p class="text-xs text-gray-500 mt-1">All standard accounts are already linked or none are active in CoA.</p>}
+                    </div>
+                    <div>
+                      <label for="add_custom_name" class="block text-sm font-medium text-gray-700">Custom Name for this Entity (Optional)</label>
+                      <input type="text" name="custom_name" id="add_custom_name" class="mt-1 focus:ring-primary-500 focus:border-primary-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"/>
+                    </div>
+                     <div class="flex items-center">
+                        <input id="add_is_active" name="is_active" type="checkbox" checked value="true" class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"/>
+                        <label for="add_is_active" class="ml-2 block text-sm text-gray-900">Active for this entity</label>
+                    </div>
+                    {/* TODO: Add recovery_type and recovery_percentage if applicable, potentially based on selected account type */}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+              <Button type="submit" variant="primary" class="sm:ml-3">Link Account</Button>
+              <Button type="button" variant="outline" id="cancel-add-account-link-modal-button" class="mt-3 sm:mt-0">Cancel</Button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    {/* Edit Account Link Modal (hidden by default) */}
+    <div id="edit-account-link-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" aria-labelledby="edit-modal-title" role="dialog" aria-modal="true">
+        <div class="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+            <div id="edit-modal-backdrop" class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true"></div>
+            <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+            <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                <form method="POST" action="" id="edit-account-link-form"> {/* Action will be set by JS */}
+                    <input type="hidden" name="_method" value="PUT"/>
+                    <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                        <div class="sm:flex sm:items-start">
+                            <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                                <h3 class="text-lg leading-6 font-medium text-gray-900" id="edit-modal-title">Edit Link for Account</h3>
+                                <p id="edit-modal-account-code-name" class="text-sm text-gray-500 mb-4"></p>
+                                <div class="space-y-4">
+                                    <div>
+                                        <label for="edit_custom_name" class="block text-sm font-medium text-gray-700">Custom Name for this Entity (Optional)</label>
+                                        <input type="text" name="custom_name" id="edit_custom_name" class="mt-1 focus:ring-primary-500 focus:border-primary-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"/>
+                                    </div>
+                                    <div class="flex items-center">
+                                        <input id="edit_is_active" name="is_active" type="checkbox" value="true" class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"/>
+                                        <label for="edit_is_active" class="ml-2 block text-sm text-gray-900">Active for this entity</label>
+                                    </div>
+                                    {/* TODO: Add recovery_type and recovery_percentage */}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                        <Button type="submit" variant="primary" class="sm:ml-3">Save Changes</Button>
+                        <Button type="button" variant="outline" id="cancel-edit-account-link-modal-button" class="mt-3 sm:mt-0">Cancel</Button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+  </div>
+</AppLayout>
+
+<script define:vars={{ entityId: entity?.id }}>
+  document.addEventListener('DOMContentLoaded', () => {
+    const addModalButton = document.getElementById('add-account-modal-button');
+    const addModal = document.getElementById('add-account-link-modal');
+    const addModalBackdrop = document.getElementById('add-modal-backdrop');
+    const cancelAddModalButton = document.getElementById('cancel-add-account-link-modal-button');
+    const addForm = document.getElementById('add-account-link-form');
+
+    const editModal = document.getElementById('edit-account-link-modal');
+    const editModalBackdrop = document.getElementById('edit-modal-backdrop');
+    const cancelEditModalButton = document.getElementById('cancel-edit-account-link-modal-button');
+    const editForm = document.getElementById('edit-account-link-form');
+    const editModalTitle = document.getElementById('edit-modal-title');
+    const editModalAccountCodeName = document.getElementById('edit-modal-account-code-name');
+
+    function openModal(modal) {
+      if (modal) modal.classList.remove('hidden');
+    }
+    
+    function closeModal(modal) {
+      if (modal) modal.classList.add('hidden');
+    }
+
+    if (addModalButton) {
+      addModalButton.addEventListener('click', () => openModal(addModal));
+    }
+    
+    if (cancelAddModalButton) {
+      cancelAddModalButton.addEventListener('click', () => closeModal(addModal));
+    }
+    
+    if (addModalBackdrop) {
+      addModalBackdrop.addEventListener('click', () => closeModal(addModal));
+    }
+
+    if (cancelEditModalButton) {
+      cancelEditModalButton.addEventListener('click', () => closeModal(editModal));
+    }
+    
+    if (editModalBackdrop) {
+      editModalBackdrop.addEventListener('click', () => closeModal(editModal));
+    }
+
+    // Handle Edit Linked Account Button Clicks
+    document.querySelectorAll('.edit-linked-account-button').forEach(button => {
+      button.addEventListener('click', (e) => {
+        const row = e.currentTarget.closest('tr');
+        if (!row || !editForm || !editModalTitle || !editModalAccountCodeName) return;
+
+        const linkedAccountId = row.dataset.linkedAccountId; // This is entity_accounts.id
+        const accountCode = row.querySelector('td:nth-child(1)')?.textContent?.trim();
+        const accountName = row.querySelector('td:nth-child(2)')?.textContent?.trim().split('(Std:')[0].trim();
+        
+        editForm.action = `/api/entities/${entityId}/accounts/${linkedAccountId}`;
+        
+        const customNameInput = editForm.elements.namedItem('custom_name');
+        if (customNameInput) customNameInput.value = row.dataset.customName || '';
+        
+        const isActiveCheckbox = editForm.elements.namedItem('is_active');
+        if (isActiveCheckbox) isActiveCheckbox.checked = row.dataset.isActive === 'true' || row.dataset.isActive === '1';
+        // TODO: Populate recovery_type and recovery_percentage if they are part of the form
+
+        editModalTitle.textContent = `Edit Link for: ${accountCode} - ${accountName}`;
+        editModalAccountCodeName.textContent = `Standard Account: ${accountCode} - ${accountName}`;
+        openModal(editModal);
+      });
+    });
+    
+    // Handle form submissions with client-side fetch for better UX
+    // Add Account Link Form
+    if (addForm) {
+      addForm.addEventListener('submit', async function(event) {
+          event.preventDefault();
+          const formData = new FormData(addForm);
+          const data = {};
+          formData.forEach((value, key) => {
+              if (key === 'is_active') {
+                  data[key] = value === 'true'; // Convert checkbox "true" to boolean
+              } else {
+                  data[key] = value;
+              }
+          });
+          
+          // Ensure is_active is boolean true/false, not just present/absent
+          const isActiveCheckbox = addForm.elements.namedItem('is_active');
+          if (isActiveCheckbox) data.is_active = isActiveCheckbox.checked;
+
+          // account_id is already correctly set by the select's value
+          if (!data.account_id) {
+              alert('Please select a standard account to link.');
+              return;
+          }
+
+          try {
+              const response = await fetch(addForm.action, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(data),
+              });
+              if (response.ok) {
+                  window.location.href = `/app/entities/${entityId}/accounts?success=Account linked successfully.`;
+              } else {
+                  const errorResult = await response.json();
+                  alert(`Error: ${errorResult.error || 'Failed to link account.'}`);
+              }
+          } catch (error) {
+              alert('An unexpected error occurred.');
+          }
+      });
+    }
+
+    // Edit Account Link Form
+    if (editForm) {
+      editForm.addEventListener('submit', async function(event) {
+          event.preventDefault();
+          const formData = new FormData(editForm);
+          const data = {};
+          formData.forEach((value, key) => {
+              if (key === 'is_active') {
+                  data[key] = value === 'true';
+              } else if (key !== '_method') { // Exclude _method
+                  data[key] = value;
+              }
+          });
+          
+          const isActiveCheckbox = editForm.elements.namedItem('is_active');
+          if (isActiveCheckbox) data.is_active = isActiveCheckbox.checked;
+
+          try {
+              const response = await fetch(editForm.action, {
+                  method: 'PUT', // Correct method
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(data),
+              });
+              if (response.ok) {
+                  window.location.href = `/app/entities/${entityId}/accounts?success=Account link updated.`;
+              } else {
+                  const errorResult = await response.json();
+                  alert(`Error: ${errorResult.error || 'Failed to update link.'}`);
+              }
+          } catch (error) {
+              alert('An unexpected error occurred.');
+          }
+      });
+    }
+
+    // Delete Linked Account Forms (using event delegation for multiple forms)
+    document.body.addEventListener('submit', async function(event) {
+        const form = event.target;
+        if (form.classList.contains('delete-linked-account-form')) {
+            event.preventDefault();
+            if (!confirm('Are you sure you want to remove this account link from the entity? This does not delete the standard account itself.')) {
+                return;
+            }
+            try {
+                const response = await fetch(form.action, { method: 'DELETE' });
+                if (response.ok) {
+                    window.location.href = `/app/entities/${entityId}/accounts?success=Account link removed.`;
+                } else {
+                    const errorResult = await response.json();
+                    alert(`Error: ${errorResult.error || 'Failed to remove link.'}`);
+                }
+            } catch (error) {
+                alert('An unexpected error occurred.');
+            }
+        }
+        // Initialize Standard Accounts Form
+        if (form.id === 'initialize-accounts-form') {
+            event.preventDefault();
+            if (!confirm('This will link all active standard accounts from your Chart of Accounts to this entity if they are not already linked. Continue?')) {
+                return;
+            }
+            try {
+                const response = await fetch(form.action, { method: 'POST' });
+                if (response.ok) {
+                    const result = await response.json();
+                    window.location.href = `/app/entities/${entityId}/accounts?success=${result.message || 'Standard accounts initialized.'}`;
+                } else {
+                    const errorResult = await response.json();
+                    alert(`Error: ${errorResult.error || 'Failed to initialize accounts.'}`);
+                }
+            } catch (error) {
+                alert('An unexpected error occurred during initialization.');
+            }
+        }
+    });
+  });
+</script>

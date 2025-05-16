@@ -1,0 +1,99 @@
+---
+// src/pages/app/accounts/new.astro
+import AppLayout from "../../../layouts/AppLayout.astro";
+import AccountForm from "../../../components/accounts/AccountForm.astro"; // This component will also need updates
+import Alert from "../../../components/ui/Alert.astro";
+import Button from "../../../components/ui/Button.astro"; // For the cancel button
+import { getSession } from "../../../lib/auth";
+import { createAccountService } from "../../../lib/services/account-service"; // To fetch existing accounts for parent selection
+import type { DbChartOfAccount } from "../../../db/schema";
+import type { AccountSystemType } from "../../../db/schema"; // Use AccountSystemType from schema
+import type { APIContext } from "astro";
+
+// Type assertion for locals if not globally typed
+const locals = Astro.locals as App.Locals;
+
+// 1. Get session and validate authentication - FIX: Add second parameter
+const session = await getSession(Astro.request, locals.runtime?.env);
+const userId = session?.user?.id;
+
+if (!userId) {
+  return Astro.redirect('/auth/signin?error=Unauthorized&redirect=/app/accounts/new');
+}
+
+// 2. Get D1 client from Astro.locals
+const db = locals.runtime?.env?.DB;
+if (!db) {
+  console.error("D1 Database binding (DB) not found in Astro.locals.runtime.env.");
+  Astro.response.status = 500;
+}
+
+// Check if we have an error in query params (e.g., from a failed POST redirect)
+const errorMessageFromQuery = Astro.url.searchParams.get('error');
+
+const accountService = db ? createAccountService(db) : null;
+let allUserAccountsForParentSelector: DbChartOfAccount[] = [];
+let pageError: string | null = null;
+
+if (accountService) {
+  try {
+    // Fetch all existing accounts for this user to populate the parent selector
+    allUserAccountsForParentSelector = await accountService.getAllAccounts(userId);
+  } catch (err: any) {
+    console.error('Error fetching accounts for parent selector:', err);
+    pageError = err.message || "Failed to load existing accounts for parent selection.";
+  }
+} else if (!db) {
+    pageError = "Database service is unavailable. Please contact support.";
+}
+
+// Default values for a new account form
+// FIX: Update boolean values to be numbers (0/1) to match DbChartOfAccount type
+const defaultAccountData: Partial<DbChartOfAccount> & { type: AccountSystemType } = {
+  // id: undefined, // No ID for a new account
+  code: "",
+  name: "",
+  type: "expense" as AccountSystemType, // Default to expense, a common type to add
+  subtype: "",
+  description: "",
+  is_recoverable: 0, // Change from boolean to number (0) to match DB schema
+  recovery_percentage: 100, // Default for number
+  tax_category: "",
+  is_active: 1, // Change from boolean to number (1) to match DB schema
+  parent_id: null, // Default parent_id to null
+};
+---
+
+<AppLayout title="Add New Account">
+  <div class="container mx-auto px-4 py-8 max-w-2xl">
+    <div class="mb-8 text-center">
+      <h1 class="text-3xl font-bold text-gray-800">Add New Account</h1>
+      <p class="text-gray-600 mt-2">Create a new account in your Chart of Accounts.</p>
+    </div>
+
+    {errorMessageFromQuery && (
+      <Alert type="error" class="mb-6" dismissible={true}>
+        {decodeURIComponent(errorMessageFromQuery)}
+      </Alert>
+    )}
+    {pageError && (
+      <Alert type="error" class="mb-6">
+        {pageError}
+      </Alert>
+    )}
+
+    {db && accountService && !pageError && ( <AccountForm 
+        account={defaultAccountData} availableParentAccounts={allUserAccountsForParentSelector}
+        isEditing={false}
+        errorMessage={errorMessageFromQuery || undefined} formAction="/api/accounts" submitButtonText="Create Account"
+        cancelUrl="/app/accounts"
+      />
+    )}
+    {(!db || !accountService) && !pageError && (
+         <Alert type="warning" class="mb-6">
+            The form cannot be displayed because the database service is unavailable.
+        </Alert>
+    )}
+
+  </div>
+</AppLayout>

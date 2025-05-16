@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { hash as argonHash, verify as argonVerify } from '@node-rs/argon2';
 
 // Corrected path: src/pages/api/auth/[...auth].ts
-import { createAppAuthOptions } from '../../src/pages/api/auth/[...auth]';
+import { createAppAuthOptions } from '../../src/functions/api/auth/[...auth]';
 import type { RuntimeEnv } from '../../src/env.d';
 import type { D1Database } from '@cloudflare/workers-types';
 
@@ -16,11 +16,16 @@ const mockD1 = {
   all: vi.fn(),
 };
 
-// --- Mock Runtime Environment ---
-const mockTestRuntimeEnv: RuntimeEnv = {
+const mockTestRuntimeEnv = {
   DB: mockD1 as unknown as D1Database,
+  SESSION: {} as any,
+  DOCUMENTS: {} as any,
+  ENVIRONMENT: 'test',
   AUTH_SECRET: 'test-secret-for-unit-tests-longer-than-32-chars',
-};
+  CSRF_SECRET: 'test-csrf-secret-for-unit-tests',
+  GITHUB_CLIENT_ID: '',  
+  GITHUB_CLIENT_SECRET: '',
+} as RuntimeEnv;
 
 describe('Authentication Logic', () => {
   beforeEach(() => {
@@ -46,7 +51,7 @@ describe('Authentication Logic', () => {
   });
 
   describe('CredentialsProvider authorize function (from createAppAuthOptions)', () => {
-    const authOptions = createAppAuthOptions(mockTestRuntimeEnv);
+    const authOptions = createAppAuthOptions(mockTestRuntimeEnv as RuntimeEnv);
     const credentialsProvider = authOptions.providers.find(
   (p: any) => p.id === 'credentials' || (typeof p === 'function' && p.id === 'credentials')
 );

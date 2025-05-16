@@ -2,19 +2,49 @@
 {
   "extends": "astro/tsconfigs/strict",
   "compilerOptions": {
+    // Overrides and additions to astro/tsconfigs/strict
     "baseUrl": ".",
     "paths": {
-      "@components/*": ["src/components/*"],
-      "@layouts/*": ["src/layouts/*"],
-      "@lib/*": ["src/lib/*"],
-      "@utils/*": ["src/utils/*"],
-      "@styles/*": ["src/styles/*"],
-      "@db/*": ["src/db/*"]
+      "@components/*":   ["src/components/*"],
+      "@layouts/*":      ["src/layouts/*"],
+      "@lib/*":          ["src/lib/*"],
+      "@utils/*":        ["src/utils/*"],
+      "@styles/*":       ["src/styles/*"],
+      "@db/*":           ["src/db/*"],
+      "@types/*":        ["src/types/*"],
+      "@pages/*":        ["src/pages/*"],
+      "@auth-lib/*":     ["src/lib/auth/*"],
+      "@services/*":     ["src/lib/services/*"],
+      "@accounting/*":   ["src/lib/accounting/*"],
+      "@rules/*":        ["src/lib/rules/*"]
     },
-    // THESE TWO LINES make `import NextAuth from '@auth/core'` valid:
+    "moduleResolution": "bundler",
+    "module": "ESNext",
+    "target": "ESNext",
+    "types": [],
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+
     "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "jsx": "preserve",
+    "jsxImportSource": "astro"
   },
-  "include": ["src/**/*", ".astro/types.d.ts"],
-  "exclude": ["node_modules", "dist", "auth.config.ts"]
+  "include": [
+    "src/**/*",
+    ".astro/types.d.ts",
+    "tests/**/*",
+    "*.config.*",
+    "src/env.d.ts",
+    "worker-configuration.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    ".wrangler"
+  ]
 }
