@@ -1,20 +1,19 @@
 ---
 // src/pages/app/entities/index.astro
 import AppLayout from "../../../layouts/AppLayout.astro";
-import EntityList from "../../../components/entities/EntityList.astro";
+import EntityList from "../../../components/accounting/EntityList.astro";
 import Button from "../../../components/ui/Button.astro";
 import Alert from "../../../components/ui/Alert.astro";
 import { createEntityService } from "../../../lib/services/entity-service";
-import { getSession } from "../../../lib/auth"; // Ensure this path is correct for your getSession utility
 import type { Entity } from "../../../types/entity";
+import type { DbEntity } from "../../../db/schema";
 import type { APIContext } from "astro";
 
 // Type assertion for locals if not globally typed
 const locals = Astro.locals as App.Locals;
 
-// 1. Get session and validate authentication - FIXED: Added the environment parameter
-const session = await getSession(Astro.request, locals.runtime?.env);
-const userId = session?.user?.id;
+// Get user directly from locals instead of using getSession
+const userId = locals.user?.id;
 
 if (!userId) {
   // If no user ID, redirect to sign-in or show an error
@@ -40,13 +39,13 @@ const errorMessage = Astro.url.searchParams.get('error');
 // Initialize entity service
 const entityService = db ? createEntityService(db) : null;
 
-let entities: Entity[] = [];
+let entities: DbEntity[] = [];
 let pageError: string | null = null;
 
 if (entityService) {
   try {
-    // 3. Pass userId to getAllEntities
-    entities = await entityService.getAllEntities(userId);
+    // Cast the result to DbEntity[] to match what EntityList expects
+    entities = await entityService.getAllEntities(userId) as unknown as DbEntity[];
   } catch (err: any) {
     console.error('Error fetching entities:', err);
     pageError = err.message || "Failed to load entities. Please try again later.";

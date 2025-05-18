@@ -1,10 +1,10 @@
-// src/lib/accounting/core/chartOfAccounts.ts
+// src/lib/accounting/chartOfAccounts.ts
 
 // Use 'import type' for types
 // Assuming AccountType and ExpenseSubtype are defined in your main application types
 // and are compatible with how they are used here.
 import type { AccountSystemType as AccountType } from '@db/schema';
-import type { ExpenseSubtype } from '../../../types/account';
+import type { ExpenseSubtype } from '../../types/account';
 
 export interface ChartOfAccountsItem {
   code: string;

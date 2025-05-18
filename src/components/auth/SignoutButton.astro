@@ -1,25 +1,43 @@
 ---
 // src/components/auth/SignoutButton.astro
-import Button from '@components/ui/Button.astro';
+import Button from '@components/ui/Button.astro'; // Assuming this is your custom Button component
 
 interface Props {
-  variant?: 'primary' | 'secondary' | 'outline' | 'danger';
-  size?: 'sm' | 'md' | 'lg';
+  /** The visual style of the button. */
+  variant?: 'primary' | 'secondary' | 'outline' | 'danger' | string; // Added string for more flexibility if Button supports it
+  /** The size of the button. */
+  size?: 'sm' | 'md' | 'lg' | string; // Added string
+  /** The text displayed on the button. */
   text?: string;
+  /** The URL to redirect to after successful sign-out. Defaults to '/auth/signin'. */
+  callbackUrl?: string;
+  /** Additional CSS classes to apply to the form element. */
+  formClass?: string;
 }
 
 const { 
-  variant = 'danger', // Default to danger for sign out
+  variant = 'danger', // Default to 'danger' style for sign-out actions
   size = 'md',
-  text = 'Sign Out'
+  text = 'Sign Out',
+  callbackUrl = '/auth/signin', // Default redirect location after sign-out
+  formClass = 'inline-block' // Default class for the form
 } = Astro.props;
+
+// Construct the action URL for the form, targeting the Auth.js sign-out endpoint.
+const formActionUrl = `/api/auth/signout?redirect=true&callbackUrl=${encodeURIComponent(callbackUrl)}`;
 ---
 
 <form 
   method="POST" 
-  action="/api/auth/signout?redirect=true&callbackUrl=/auth/signin"
-  class="inline-block"
+  action={formActionUrl}
+  class:list={[formClass]} {/* Use class:list for cleaner class application */}
 >
+  {/* CSRF Protection for Auth.js Sign-out:
+    Similar to the sign-in form, Auth.js v5's /api/auth/signout endpoint typically has 
+    built-in CSRF protection (e.g., double-submit cookie, Origin/Host header check). 
+    Rely on Auth.js's internal mechanisms for this route.
+    Your project's `csrf-csrf` library is intended for your custom application API endpoints.
+  */}
   <Button type="submit" variant={variant} size={size}>
     {text}
   </Button>

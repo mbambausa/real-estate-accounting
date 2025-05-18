@@ -1,5 +1,5 @@
 // src/lib/rules/engine.ts
-import type { Transaction, TransactionLine } from '../accounting/core/transaction'; // Assuming TransactionLine is also exported or needed
+import type { Transaction, TransactionLine } from '@accounting/transaction'; // Using path alias for robustness
 
 export interface RuleCondition {
   field: string; // Path to the field in the transaction object (e.g., "description", "amount", "metadata.category")

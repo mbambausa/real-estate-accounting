@@ -2,7 +2,7 @@
 import { defineConfig } from 'astro/config';
 import cloudflare from '@astrojs/cloudflare';
 import UnoCSS from 'unocss/astro';
-import alpine from '@astrojs/alpinejs'; // Add this import
+import alpine from '@astrojs/alpinejs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -24,7 +24,7 @@ export default defineConfig({
     }),
     alpine({
       entrypoint: '/src/scripts/alpine-setup.js'
-    }) // Add this integration
+    })
   ],
   build: {
     inlineStylesheets: 'auto',

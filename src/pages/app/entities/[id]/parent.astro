@@ -3,11 +3,11 @@
 import AppLayout from "../../../../layouts/AppLayout.astro";
 import Alert from "../../../../components/ui/Alert.astro";
 import Button from "../../../../components/ui/Button.astro";
-import EntitySelector from "../../../../components/entities/EntitySelector.astro";
+import EntitySelector from "../../../../components/accounting/selectors/EntitySelector.astro";
 import { createEntityService } from "../../../../lib/services/entity-service";
 import { AppError, ErrorCode } from "../../../../utils/errors";
-import { getSession } from "../../../../lib/auth";
 import type { Entity } from "../../../../types/entity";
+import type { DbEntity } from "../../../../db/schema";
 import type { APIContext } from "astro";
 
 // Type assertion for locals if not globally typed
@@ -25,9 +25,8 @@ if (!rawEntityId) {
 // We can assign it to a new variable, and TypeScript will infer the correct type.
 const entityId = rawEntityId; // TypeScript now correctly infers 'string' here
 
-// 1. Get session and validate authentication
-const session = await getSession(Astro.request, locals.runtime?.env);
-const userId = session?.user?.id;
+// Get user directly from locals instead of using getSession
+const userId = locals.user?.id;
 
 if (!userId) {
   return Astro.redirect(`/auth/signin?error=Unauthorized&redirect=/app/entities/${entityId}/parent`);
@@ -51,7 +50,7 @@ const entityService = db ? createEntityService(db) : null;
 
 let entity: Entity | null = null;
 let currentParentEntity: Entity | null = null;
-let availableParentEntities: Entity[] = [];
+let availableParentEntities: DbEntity[] = []; // Changed to DbEntity[] to match EntitySelector's expected type
 let pageError: string | null = null;
 
 if (entityService) {
@@ -84,7 +83,10 @@ if (entityService) {
     }
     await collectDescendants(entity.id); // Start collecting from the current entity
 
-    availableParentEntities = allUserEntities.filter(e => e.id !== undefined && !descendantIds.has(e.id));
+    // Cast the filtered entities to DbEntity[] to match EntitySelector's expected type
+    availableParentEntities = allUserEntities.filter(e => 
+      e.id !== undefined && !descendantIds.has(e.id)
+    ) as unknown as DbEntity[];
 
   } catch (err: any) {
     console.error(`Error fetching data for entity ${entityId} parent management:`, err);
@@ -170,13 +172,12 @@ const formatBusinessTypeDisplay = (type?: string | null) => {
                 <input type="hidden" name="_method" value="PUT" />
                 <EntitySelector
                   entities={availableParentEntities}
-                  selectedId={entity.parent_id || ""}
-                  name="parent_id" id="parent_id_selector_manage"
+                  selectedEntityId={entity.parent_id || ""}
+                  name="parent_id" 
+                  id="parent_id_selector_manage"
                   label="Select New Parent Entity"
                   placeholder="None (Make this a top-level entity)"
-                  showLegalName={true}
-                  class="mt-1"
-                  excludeId={entity.id} />
+                  class="mt-1" />
                 <p class="text-xs text-gray-500">
                   Selecting "None" will make this a top-level entity. Ensure you are not creating circular dependencies.
                 </p>

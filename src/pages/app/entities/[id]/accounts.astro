@@ -4,22 +4,30 @@ import AppLayout from "../../../../layouts/AppLayout.astro";
 import Alert from "../../../../components/ui/Alert.astro";
 import Button from "../../../../components/ui/Button.astro";
 import { createEntityService } from "../../../../lib/services/entity-service";
-import { createEntityAccountService, type JoinedEntityAccount, type EntityAccountInput } from "../../../../lib/services/entity-account-service";
+import { createEntityAccountService, type AppEntityAccount } from "../../../../lib/services/entity-account-service";
 import { createAccountService } from "../../../../lib/services/account-service";
 import type { DbChartOfAccount } from "../../../../db/schema";
 import type { Entity } from "../../../../types/entity";
 import { AppError, ErrorCode } from "../../../../utils/errors";
-import { getSession } from "../../../../lib/auth";
 import type { APIContext } from "astro";
+
+// Define the EntityAccountInput type that was missing from the service
+interface EntityAccountInput {
+  entity_id: string;
+  account_id: string;
+  custom_name?: string | null;
+  is_active?: boolean;
+  recovery_type?: string | null;
+  recovery_percentage?: number | null;
+}
 
 // Type assertion for locals if not globally typed
 const locals = Astro.locals as App.Locals;
 
 const entityIdFromPath = Astro.params.id;
 
-// 1. Get session and validate authentication - FIX: Add second argument
-const session = await getSession(Astro.request, locals.runtime?.env);
-const userId = session?.user?.id;
+// Get user directly from locals instead of using getSession
+const userId = locals.user?.id;
 
 if (!userId) {
   return Astro.redirect(`/auth/signin?error=Unauthorized&redirect=/app/entities/${entityIdFromPath}/accounts`);
@@ -45,7 +53,7 @@ const entityAccountService = db ? createEntityAccountService(db) : null;
 const accountService = db ? createAccountService(db) : null;
 
 let entity: Entity | null = null;
-let linkedEntityAccounts: JoinedEntityAccount[] = [];
+let linkedEntityAccounts: AppEntityAccount[] = []; // Changed from JoinedEntityAccount to AppEntityAccount
 let allUserStandardAccounts: DbChartOfAccount[] = [];
 let availableStandardAccounts: DbChartOfAccount[] = []; // Accounts not yet linked to this entity
 let pageError: string | null = null;
@@ -61,7 +69,7 @@ if (db && entityService && entityAccountService && accountService) {
     allUserStandardAccounts = await accountService.getAllAccounts(userId);
 
     const linkedStandardAccountIds = new Set(linkedEntityAccounts.map(lea => lea.account_id));
-    availableStandardAccounts = allUserStandardAccounts.filter(stdAcc => !linkedStandardAccountIds.has(stdAcc.id) && stdAcc.is_active === 1);
+    availableStandardAccounts = allUserStandardAccounts.filter(stdAcc => !linkedStandardAccountIds.has(stdAcc.id) && stdAcc.is_active);
 
   } catch (err: any) {
     console.error(`Error fetching data for entity ${entityIdFromPath} accounts:`, err);
@@ -80,11 +88,11 @@ if (db && entityService && entityAccountService && accountService) {
 const accountSystemTypes = ["asset", "liability", "equity", "income", "expense"] as const;
 
 // Group accounts by type for display in modals and lists
-const groupAccountsByType = (accounts: Array<JoinedEntityAccount | DbChartOfAccount>) => {
-  const grouped: Record<string, Array<JoinedEntityAccount | DbChartOfAccount>> = {};
+const groupAccountsByType = (accounts: Array<AppEntityAccount | DbChartOfAccount>) => {
+  const grouped: Record<string, Array<AppEntityAccount | DbChartOfAccount>> = {};
   accountSystemTypes.forEach(type => grouped[type] = []);
   accounts.forEach(acc => {
-    const typeKey = 'account_type' in acc ? acc.account_type : acc.type; // Handle both JoinedEntityAccount and DbChartOfAccount
+    const typeKey = 'account_type' in acc ? acc.account_type : acc.type; // Handle both AppEntityAccount and DbChartOfAccount
     if (grouped[typeKey]) {
       grouped[typeKey].push(acc);
     } else {
@@ -188,7 +196,7 @@ const getTypeColor = (type?: string | null) => {
                           {linkedAcc.account_type}
                           {linkedAcc.account_subtype && ` (${linkedAcc.account_subtype})`}
                         </span>
-                        {linkedAcc.account_is_recoverable === 1 && (
+                        {linkedAcc.account_is_recoverable && (
                           <span class="block mt-1 text-xs text-green-700">
                             {linkedAcc.recovery_percentage ?? 100}% Recoverable
                             {linkedAcc.recovery_type && ` (${linkedAcc.recovery_type})`}

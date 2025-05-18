@@ -1,21 +1,19 @@
 ---
 // src/pages/app/accounts/[id]/index.astro
 import AppLayout from "../../../../layouts/AppLayout.astro";
-import AccountForm from "../../../../components/accounts/AccountForm.astro";
+import AccountForm from "../../../../components/accounting/AccountForm.astro"; // Fixed path: accounts -> accounting
 import Alert from "../../../../components/ui/Alert.astro";
 import Button from "../../../../components/ui/Button.astro";
 import { createAccountService } from "../../../../lib/services/account-service";
 import { AppError, ErrorCode } from "../../../../utils/errors";
-import { getSession } from "../../../../lib/auth.ts";
 import type { DbChartOfAccount, AccountSystemType } from "../../../../db/schema";
 import type { APIContext } from "astro";
 
 // Type assertion for locals if not globally typed
 const locals = Astro.locals as App.Locals;
 
-// 1. Get session and validate authentication - FIX: Added second parameter
-const session = await getSession(Astro.request, locals.runtime?.env);
-const userId = session?.user?.id;
+// Access user directly from Astro.locals instead of using getSession
+const userId = locals.user?.id;
 
 const accountIdFromPath = Astro.params.id; // This is now the UUID ID
 

@@ -3,17 +3,17 @@
 import AppLayout from "../../../../layouts/AppLayout.astro";
 import Alert from "../../../../components/ui/Alert.astro";
 import Button from "../../../../components/ui/Button.astro";
-import EntitySelector from "../../../../components/entities/EntitySelector.astro";
+import EntitySelector from "../../../../components/accounting/selectors/EntitySelector.astro";
 import { createEntityService } from "../../../../lib/services/entity-service";
 import { AppError, ErrorCode } from "../../../../utils/errors"; // Assuming ErrorCode.NOT_FOUND is valid
-import { getSession } from "../../../../lib/auth";
 import type { Entity } from "../../../../types/entity";
+import type { DbEntity } from "../../../../db/schema";
 import type { APIContext } from "astro";
 
 const locals = Astro.locals as App.Locals; // This type assertion is in the frontmatter, generally okay.
 
-const session = await getSession(Astro.request, locals.runtime?.env);
-const userId = session?.user?.id;
+// Get user directly from locals instead of using getSession
+const userId = locals.user?.id;
 const entityIdFromPath = Astro.params.id;
 
 if (!userId) {
@@ -40,7 +40,7 @@ const entityService = db ? createEntityService(db) : null;
 let entity: Entity | null = null;
 let childEntities: Entity[] = [];
 let parentEntity: Entity | null = null;
-let allEntitiesForParentSelector: Entity[] = [];
+let allEntitiesForParentSelector: DbEntity[] = [];
 let pageError: string | null = null;
 
 if (!db) {
@@ -94,9 +94,10 @@ if (!db) {
       await collectDescendants(entity.id);
       
       // Filter out entities without IDs and those in the descendantIds set
+      // Cast the result to DbEntity[] since the EntitySelector component expects this type
       allEntitiesForParentSelector = allUserEntities.filter(e => {
         return e.id !== undefined && !descendantIds.has(e.id);
-      });
+      }) as unknown as DbEntity[];
     }
 
   } catch (err: any) {
@@ -219,14 +220,13 @@ const formatEinDisplay = (ein?: string | null) => {
                 </div>
                 <EntitySelector
                   entities={allEntitiesForParentSelector}
-                  selectedId={entity.parent_id || ""}
+                  selectedEntityId={entity.parent_id || ""}
                   name="parent_id"
                   id="parent_id_selector_edit"
                   label="Parent Entity (Optional)"
                   placeholder="None (This is a top-level entity)"
-                  showLegalName={true}
-                  class="mt-1"
-                  excludeId={entity.id} />
+                  class="mt-1" />
+                  {/* removed showLegalName and excludeId as they're not in the Props interface */}
                 <div class="flex justify-end space-x-4 pt-6 border-t border-gray-200 mt-8">
                   <Button href={`/app/entities/${entity.id}`} variant="outline">Cancel</Button>
                   <Button type="submit" variant="primary" id="submit-edit-entity">Save Changes</Button>

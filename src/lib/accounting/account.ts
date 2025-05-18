@@ -1,10 +1,10 @@
-// src/lib/accounting/core/account.ts
+// src/lib/accounting/account.ts
 
 // Assuming AccountType and ExpenseSubtype are defined in your main application types
 // and are compatible with how they are used here.
 // If these are specific to the core engine and differ, they should be defined here or imported from a core-specific types file.
 import type { AccountSystemType as AccountType } from '@db/schema';
-import type { ExpenseSubtype } from '../../../types/account';
+import type { ExpenseSubtype } from '../../types/account';
 import Decimal from 'decimal.js';
 
 /**

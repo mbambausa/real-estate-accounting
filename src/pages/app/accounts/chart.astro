@@ -1,26 +1,24 @@
 ---
 // src/pages/app/accounts/chart.astro
 import AppLayout from "../../../layouts/AppLayout.astro";
-import ChartOfAccounts from "../../../components/accounts/ChartOfAccounts.astro"; // This component will handle hierarchy display
+import ChartOfAccounts from "../../../components/accounting/ChartOfAccounts.astro"; 
 import Button from "../../../components/ui/Button.astro";
-import Alert from "../../../components/ui/Alert.astro"; // For displaying errors
+import Alert from "../../../components/ui/Alert.astro"; 
 import { createAccountService } from "../../../lib/services/account-service";
-import { getSession } from "../../../lib/auth";
 import type { DbChartOfAccount } from "../../../db/schema";
 import type { APIContext } from "astro";
 
 // Type assertion for locals if not globally typed
 const locals = Astro.locals as App.Locals;
 
-// 1. Get session and validate authentication - FIX: Add second parameter
-const session = await getSession(Astro.request, locals.runtime?.env);
-const userId = session?.user?.id;
+// Access user directly from Astro.locals instead of using getSession
+const userId = locals.user?.id;
 
 if (!userId) {
   return Astro.redirect('/auth/signin?error=Unauthorized&redirect=/app/accounts/chart');
 }
 
-// 2. Get D1 client from Astro.locals
+// Get D1 client from Astro.locals
 const db = locals.runtime?.env?.DB;
 if (!db) {
   console.error("D1 Database binding (DB) not found in Astro.locals.runtime.env.");
@@ -38,7 +36,7 @@ let pageError: string | null = null;
 
 if (accountService) {
   try {
-    // 3. Fetch all accounts for the user. The component will handle filtering by active status if needed.
+    // Fetch all accounts for the user. The component will handle filtering by active status if needed.
     allUserAccounts = await accountService.getAllAccounts(userId);
   } catch (err: any) {
     console.error('Error fetching accounts for chart view:', err);
@@ -94,7 +92,7 @@ if (accountService) {
         </div>
         <ChartOfAccounts 
           accounts={allUserAccounts} 
-          showInactive={showInactive}
+          initialFilterActiveOnly={!showInactive} 
         />
       </>
     ) : !pageError ? (

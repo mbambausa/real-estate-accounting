@@ -1,4 +1,4 @@
-// src/lib/accounting/core/journal.ts
+// src/lib/accounting/journal.ts
 import { Transaction } from './transaction'; // Assumes Transaction class from core_transaction_ts_v2
 import Decimal from 'decimal.js';
 

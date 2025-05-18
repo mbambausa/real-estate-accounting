@@ -1,0 +1,43 @@
+---
+// src/components/accounting/ChartOfAccounts.astro
+import AccountList from "./AccountList.astro";
+import Button from "@components/ui/Button.astro";
+import type { DbChartOfAccount } from "@db/schema";
+
+interface Props {
+  accounts: DbChartOfAccount[];
+  initialFilterActiveOnly?: boolean; // Add prop to control initial filter state
+}
+
+const { 
+  accounts = [],
+  initialFilterActiveOnly = true, // Default to showing only active accounts
+} = Astro.props;
+---
+
+<div class="chart-of-accounts-container space-y-6">
+  <div class="flex justify-between items-center">
+    <h2 class="text-2xl font-semibold text-gray-800">Chart of Accounts</h2>
+    <Button href="/app/accounts/new" variant="primary" size="md">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" />
+      </svg>
+      New Account
+    </Button>
+  </div>
+
+  <AccountList 
+    accounts={accounts} 
+    showActions={true} 
+    initialFilterActiveOnly={initialFilterActiveOnly}
+  />
+
+  {accounts.length === 0 && (
+    <div class="text-center py-12">
+      <p class="text-gray-500">Your Chart of Accounts is empty.</p>
+      <p class="mt-1 text-gray-500">
+        Get started by <a href="/app/accounts/new" class="text-primary-600 hover:underline font-medium">adding your first account</a>.
+      </p>
+    </div>
+  )}
+</div>

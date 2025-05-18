@@ -7,8 +7,8 @@ import type { DbChartOfAccount, AccountSystemType as DbAccountSystemType } from 
 // For now, we'll primarily use DbChartOfAccount for direct D1 interaction.
 // import type { Account as AppAccount, AccountInput as AppAccountInput, AccountType, ExpenseSubtype } from '@/types/account';
 import { AppError, ErrorCode } from '@utils/errors';
-import { defaultChartOfAccounts } from '@lib/accounting/core/chartOfAccounts';
-import type { ChartOfAccountsItem } from '@lib/accounting/core/chartOfAccounts'; // Fix 2: Use type-only import
+import { defaultChartOfAccounts } from '@lib/accounting/chartOfAccounts';
+import type { ChartOfAccountsItem } from '@lib/accounting/chartOfAccounts'; // Fix 2: Use type-only import
 
 // Define an input type specific to this service, aligning with DbChartOfAccount fields
 export interface ChartOfAccountInput {

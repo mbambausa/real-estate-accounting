@@ -1,28 +1,45 @@
 ---
 // src/components/auth/AuthState.astro
-import { getCurrentUserId } from '@lib/auth';
 
-// Props for more flexible usage
+// This component conditionally renders content based on the user's authentication state.
+// It relies on Astro.locals.user being populated by the authentication middleware.
+
 interface Props {
-  fallback?: 'redirect' | 'render'; // What to do if not authenticated
-  redirectUrl?: string; // Where to redirect if fallback is 'redirect'
+  /**
+   * Determines the behavior if the user is not authenticated.
+   * 'render': Renders the 'unauthenticated' slot (default).
+   * 'redirect': Redirects the user to the specified `redirectUrl`.
+   */
+  fallback?: 'redirect' | 'render';
+
+  /**
+   * The URL to redirect to if `fallback` is set to 'redirect' and the user is not authenticated.
+   * Defaults to '/auth/signin'.
+   */
+  redirectUrl?: string;
 }
 
-const { 
-  fallback = 'render',
-  redirectUrl = '/auth/signin'
+const {
+  fallback = 'render', // Default behavior is to render the unauthenticated slot
+  redirectUrl = '/auth/signin',
 } = Astro.props;
 
-// Check authentication status
-const userId = await getCurrentUserId(Astro.request, Astro.locals.runtime.env);
-const isAuthenticated = !!userId;
+// Determine authentication status directly from Astro.locals.
+// The authentication middleware is responsible for populating Astro.locals.user.
+const user = Astro.locals.user;
+const isAuthenticated = !!user; // User is authenticated if Astro.locals.user object exists
 
-// Handle redirect if needed
+// Handle redirect behavior if the user is not authenticated and fallback is 'redirect'.
 if (!isAuthenticated && fallback === 'redirect') {
-  return Astro.redirect(redirectUrl);
+  // Construct the full redirect URL, potentially including a callbackUrl if needed for UX.
+  // For simplicity here, just redirecting to the specified redirectUrl.
+  // Consider adding `?callbackUrl=${encodeURIComponent(Astro.url.pathname + Astro.url.search)}`
+  // to redirectUrl if you want to bring the user back after they sign in.
+  return Astro.redirect(redirectUrl, 307); // Use 307 for temporary redirect
 }
 ---
 
+{/* Conditionally render slots based on authentication state */}
 {isAuthenticated ? (
   <slot name="authenticated" />
 ) : (

@@ -2,40 +2,60 @@
 // src/pages/auth/signout.astro
 import AuthLayout from "@layouts/AuthLayout.astro";
 import Button from "@components/ui/Button.astro";
-import { getCurrentUserId, getSession } from '@lib/auth';
+// Session and user information should be available from Astro.locals if middleware has run.
 
-// Get session info to display user details
-const userId = await getCurrentUserId(Astro.request, Astro.locals.runtime.env);
-const session = await getSession(Astro.request, Astro.locals.runtime.env);
-const userName = session?.user?.name;
-const userEmail = session?.user?.email;
+const { session, user } = Astro.locals; // Get session and user from Astro.locals
+
+const userName = user?.name;
+const userEmail = user?.email;
+
+// Determine the callback URL for after sign-out. Default to the sign-in page.
+// This could also come from a query parameter if this page is reached via a more complex flow.
+const callbackUrl = Astro.url.searchParams.get('callbackUrl') || '/auth/signin?signed_out=true';
+
+// Construct the action URL for the form.
+const formActionUrl = `/api/auth/signout?redirect=true&callbackUrl=${encodeURIComponent(callbackUrl)}`;
+
+// If the user is not authenticated and somehow lands here,
+// it might be confusing. However, this page is typically protected by being part of the
+// Auth.js flow which expects an active session to sign out from, or it's a confirmation step.
+// If no user/session, the displayed user info will be blank, which is acceptable.
 ---
 
 <AuthLayout title="Sign Out">
   <div class="w-full max-w-sm mx-auto">
     <div class="text-center mb-8">
-      <a href="/" class="inline-block mb-4">
-        <svg class="w-16 h-16 text-primary-600 mx-auto" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <a href="/" class="inline-block mb-4" aria-label="Home">
+        {/* Consider using a more descriptive SVG or an <img> tag for your logo */}
+        <svg class="w-12 h-12 sm:w-16 sm:h-16 text-primary-600 mx-auto" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          {/* Placeholder Icon - replace with your actual app icon/logo */}
           <path fill-rule="evenodd" d="M3.75 3A.75.75 0 003 3.75v16.5c0 .414.336.75.75.75h16.5A.75.75 0 0021 20.25V3.75A.75.75 0 0020.25 3H3.75zM6.5 6.25a.75.75 0 01.75-.75h2.5a.75.75 0 010 1.5h-2.5a.75.75 0 01-.75-.75zm0 3.5a.75.75 0 01.75-.75h6.5a.75.75 0 010 1.5h-6.5a.75.75 0 01-.75-.75zm0 3.5a.75.75 0 01.75-.75H17a.75.75 0 010 1.5H7.25a.75.75 0 01-.75-.75zm.75 2.75a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-4.5z" clip-rule="evenodd" />
         </svg>
       </a>
       <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">Sign Out</h1>
-      <p class="text-sm text-gray-600 mt-2">Are you sure you want to sign out?</p>
       
-      {userName || userEmail ? (
-        <p class="mt-2 text-sm font-medium text-gray-600">
-          Account: {userName || ''} {userName && userEmail ? <span class="text-gray-400">•</span> : ''} 
-          {userEmail && <span class="text-gray-500">{userEmail}</span>}
-        </p>
-      ) : null}
+      {user ? (
+        <>
+          <p class="text-sm text-gray-600 mt-2">Are you sure you want to sign out from your account?</p>
+          <p class="mt-3 text-sm font-medium text-gray-700">
+            Account: 
+            {userName && <span class="text-gray-900">{userName}</span>}
+            {userName && userEmail ? <span class="text-gray-400 mx-1">•</span> : ''} 
+            {userEmail && <span class="text-gray-500">{userEmail}</span>}
+          </p>
+        </>
+      ) : (
+        <p class="text-sm text-gray-600 mt-2">You are about to sign out.</p>
+      )}
     </div>
 
     <form
       method="POST"
-      action="/api/auth/signout?redirect=true&callbackUrl=/auth/signin"
-      class="bg-white shadow-xl rounded-lg px-6 py-8 sm:px-8 sm:py-10 border border-gray-200"
+      action={formActionUrl}
+      class="bg-white shadow-xl rounded-lg px-6 py-8 sm:px-8 sm:py-10 border border-slate-200"
     >
-      <Button type="submit" variant="danger" fullWidth={true} size="md">
+      {/* CSRF protection is handled by Auth.js for its /api/auth/signout endpoint */}
+      <Button type="submit" variant="danger" fullWidth={true} size="lg">
         Confirm Sign Out
       </Button>
     </form>

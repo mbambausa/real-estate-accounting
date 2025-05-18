@@ -1,4 +1,4 @@
-// src/lib/accounting/core/transaction.ts
+// src/lib/accounting/transaction.ts
 import Decimal from 'decimal.js';
 
 export interface TransactionLine {

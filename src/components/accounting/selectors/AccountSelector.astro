@@ -1,0 +1,81 @@
+---
+// src/components/accounting/selectors/AccountSelector.astro
+import type { DbChartOfAccount, AccountSystemType } from "@db/schema";
+
+interface Props {
+  accounts: DbChartOfAccount[]; // All available accounts to choose from
+  selectedAccountId?: string | null;
+  name?: string; // HTML name attribute for the select input
+  id?: string;
+  required?: boolean;
+  label?: string;
+  placeholder?: string;
+  disabled?: boolean;
+  filterByType?: AccountSystemType | AccountSystemType[]; // Optional filter by account type(s)
+  class?: string; // Additional classes for the select element
+  onCha?: string; // Alpine.js x-on:change handler string
+}
+
+const {
+  accounts = [],
+  selectedAccountId = null,
+  name = "account_id",
+  id = "account-selector",
+  required = false,
+  label = "Account",
+  placeholder = "Select an account...",
+  disabled = false,
+  filterByType,
+  class: customClass,
+  onCha, // Renamed to avoid conflict with Astro's onchange
+} = Astro.props;
+
+const filteredAccounts = accounts.filter(acc => {
+  if (!acc.is_active) return false; // Always filter out inactive accounts from selector
+  if (!filterByType) return true;
+  if (Array.isArray(filterByType)) {
+    return filterByType.includes(acc.type);
+  }
+  return acc.type === filterByType;
+});
+
+// Group by type for optgroups
+const accountsByType = filteredAccounts.reduce((acc, account) => {
+  const type = account.type;
+  if (!acc[type]) {
+    acc[type] = [];
+  }
+  acc[type].push(account);
+  return acc;
+}, {} as Record<AccountSystemType, DbChartOfAccount[]>);
+
+const orderedTypes: AccountSystemType[] = ["asset", "liability", "equity", "income", "expense"];
+
+const baseClasses = "w-full px-4 py-2.5 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors bg-white disabled:bg-gray-100 disabled:cursor-not-allowed";
+const finalClasses = `${baseClasses} ${customClass || ''}`;
+---
+{label && <label for={id} class="block text-sm font-medium text-gray-700 mb-1.5">{label}{required && <span class="text-red-500">*</span>}</label>}
+<select
+  name={name}
+  id={id}
+  required={required}
+  disabled={disabled}
+  class={finalClasses}
+  x-on:change={onCha}
+>
+  {placeholder && <option value="" disabled={required} selected={!selectedAccountId}>{placeholder}</option>}
+  {orderedTypes.map(typeKey => {
+    const typeAccounts = accountsByType[typeKey] || [];
+    if (typeAccounts.length === 0) return null;
+    return (
+      <optgroup label={typeKey.charAt(0).toUpperCase() + typeKey.slice(1)}>
+        {typeAccounts.map(account => (
+          <option value={account.id} selected={selectedAccountId === account.id}>
+            {account.code} - {account.name}
+          </option>
+        ))}
+      </optgroup>
+    );
+  })}
+  {filteredAccounts.length === 0 && !placeholder && <option value="" disabled>No accounts available</option>}
+</select>

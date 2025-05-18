@@ -1,0 +1,153 @@
+---
+// src/components/accounting/AccountList.astro
+import Button from "@components/ui/Button.astro";
+import type { AccountSystemType as AccountType } from "@db/schema";
+import type { DbChartOfAccount } from "@db/schema";
+
+interface Props {
+  accounts: DbChartOfAccount[];
+  showActions?: boolean;
+  initialFilterActiveOnly?: boolean; // New prop to control initial filter state
+}
+
+const { 
+  accounts = [], 
+  showActions = true,
+  initialFilterActiveOnly = true // Default to true (only show active)
+} = Astro.props;
+
+// Group accounts by type
+const accountsByType = accounts.reduce((acc, account) => {
+  (acc[account.type] ??= []).push(account);
+  return acc;
+}, {} as Record<AccountType, DbChartOfAccount[]>);
+
+const orderedTypes: AccountType[] = ["asset", "liability", "equity", "income", "expense"];
+
+const hasAccounts = accounts.length > 0;
+---
+
+<div
+  x-data="{ 
+    searchTerm: '',
+    filterActiveOnly: ${initialFilterActiveOnly}, // Use the initial value from props
+    applyFilters() {
+      const term = this.searchTerm.toLowerCase();
+      const activeOnly = this.filterActiveOnly;
+      document.querySelectorAll('[data-account-row]').forEach(row => {
+        const el = row as HTMLElement;
+        const code = row.dataset.accountCode?.toLowerCase() || '';
+        const name = row.dataset.accountName?.toLowerCase() || '';
+        const isActive = row.dataset.accountIsActive === 'true';
+        const matches = (!activeOnly || isActive) && (term === '' || code.includes(term) || name.includes(term));
+        el.style.display = matches ? '' : 'none';
+      });
+      this.updateTypeSectionCounts();
+    },
+    updateTypeSectionCounts() {
+      document.querySelectorAll('.account-type-section').forEach(section => {
+        const sec = section as HTMLElement;
+        const rows = sec.querySelectorAll('[data-account-row]');
+        const visible = Array.from(rows).filter(r => (r as HTMLElement).style.display !== 'none');
+        const countDisplay = sec.querySelector('.type-account-count') as HTMLElement;
+        const visibleCount = sec.querySelector('.type-visible-count') as HTMLElement;
+        visibleCount.textContent = String(visible.length);
+        countDisplay.style.display = (visible.length < rows.length && (this.searchTerm || !this.filterActiveOnly)) ? '' : 'none';
+        sec.style.display = (visible.length === 0 && (this.searchTerm || !this.filterActiveOnly)) ? 'none' : '';
+      });
+    }
+  }"
+  x-init="applyFilters()"
+>
+  <!-- Filters -->
+  <div class="mb-6 p-4 bg-gray-50 rounded-lg shadow border">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div>
+        <input
+          type="text"
+          placeholder="Search by code or name..."
+          x-model.debounce.300ms="searchTerm"
+          @input="applyFilters()"
+          class="w-full pl-10 pr-3 py-2 border rounded-md"
+        />
+      </div>
+      <div class="flex items-center justify-end">
+        <label class="inline-flex items-center">
+          <input
+            type="checkbox"
+            x-model="filterActiveOnly"
+            @change="applyFilters()"
+            class="h-5 w-5 rounded"
+          />
+          <span class="ml-2 text-sm">Show active only</span>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Account Sections -->
+  <template x-if="hasAccounts">
+    <div class="space-y-8">
+      {orderedTypes.map(type => {
+        const list = accountsByType[type] || [];
+        return (
+          <section class="account-type-section">
+            <h3 class="text-xl font-semibold mb-3">{type.charAt(0).toUpperCase() + type.slice(1)} Accounts</h3>
+            <div class="bg-white rounded shadow overflow-hidden border">
+              <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                  <tr>
+                    <th scope="col" class="px-4 py-2 text-left">Code</th>
+                    <th scope="col" class="px-4 py-2 text-left">Name</th>
+                    <th scope="col" class="px-4 py-2 text-left hidden sm:table-cell">Subtype</th>
+                    <th scope="col" class="px-4 py-2 text-left">Status</th>
+                    {showActions && <th scope="col" class="px-4 py-2 text-right">Actions</th>}
+                  </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                  {list.map(account => (
+                    <tr
+                      data-account-row
+                      data-account-id={account.id}
+                      data-account-code={account.code}
+                      data-account-name={account.name}
+                      data-account-is-active={(account.is_active === 1).toString()}
+                      class="hover:bg-gray-50"
+                    >
+                      <td class="px-4 py-2">
+                        <a href={`/app/accounts/${account.id}`} class="font-medium">{account.code}</a>
+                      </td>
+                      <td class="px-4 py-2">{account.name}</td>
+                      <td class="px-4 py-2 hidden sm:table-cell">{account.subtype || '—'}</td>
+                      <td class="px-4 py-2">
+                        <span class="px-2 py-0.5 rounded-full text-xs font-medium"
+                          :class="account.is_active === 1 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'">
+                          {account.is_active === 1 ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      {showActions && (
+                        <td class="px-4 py-2 text-right space-x-2">
+                          <a href={`/app/accounts/${account.id}`} class="hover:underline">View</a>
+                          <a href={`/app/accounts/${account.id}?edit=true`} class="hover:underline">Edit</a>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div class="p-3 text-xs text-gray-500 text-right type-account-count">
+                Showing <span class="font-medium type-visible-count"></span> of {list.length} {type} accounts
+              </div>
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  </template>
+
+  <template x-if="!hasAccounts">
+    <div class="p-6 text-center bg-white rounded shadow border">
+      <p class="text-gray-500">No accounts to display. <a href="/app/accounts/new" class="underline">Add one?</a></p>
+    </div>
+  </template>
+</div>

@@ -1,82 +1,106 @@
 // src/utils/csrf.ts
-import Tokens from 'csrf'; // Changed from { Tokens }
+import { doubleCsrf } from 'csrf-csrf';
 import type { APIContext } from 'astro';
-import type { RuntimeEnv } from '../env.d'; // Import RuntimeEnv
+import type { RuntimeEnv } from '../env.d';
 
-const tokens = new Tokens();
+type CsrfUtils = {
+  generateCsrfToken: (
+    req: Request,
+    res: Response,
+    opts?: { overwrite?: boolean }
+  ) => string;
+  validateRequest: (req: Request, res: Response) => boolean;
+};
 
-/**
- * Retrieves the CSRF secret from the environment.
- * Throws an error if the secret is not configured.
- */
-function getCsrfSecret(env: RuntimeEnv): string {
-  const secret = env.CSRF_SECRET;
-  if (!secret) {
-    console.error("CSRF_SECRET is not defined in environment variables.");
-    // In a production environment, you might want to throw an error
-    // to prevent the application from running with insecure CSRF protection.
-    if (import.meta.env.PROD) {
-      throw new Error("CSRF_SECRET is not configured. Application cannot start securely.");
-    }
-    // Fallback for local development if someone forgets to set it, though not recommended.
-    return "unsafe-fallback-secret-dev-only";
-  }
-  return secret;
-}
+let csrfUtils: CsrfUtils | null = null;
 
-export function generateToken(env: RuntimeEnv): string {
-  const secret = getCsrfSecret(env);
-  return tokens.create(secret);
-}
+function getCsrfUtils(env: RuntimeEnv): CsrfUtils {
+  if (csrfUtils) return csrfUtils;
 
-export function validateToken(token: string, env: RuntimeEnv): boolean {
-  const secret = getCsrfSecret(env);
-  if (!token) return false; // Ensure token is provided
-  return tokens.verify(secret, token);
-}
+  const secret =
+    env.CSRF_SECRET && env.CSRF_SECRET.length >= 32
+      ? env.CSRF_SECRET
+      : (() => {
+          const fallback =
+            'unsafe-fallback-dev-secret-must-be-at-least-32-bytes-long';
+          console.warn(
+            `Using fallback CSRF_SECRET for dev: ${fallback}. THIS IS INSECURE.`
+          );
+          return fallback;
+        })();
 
-export function setCsrfCookie(context: APIContext): string {
-  // The runtime environment is available on context.locals in Astro
-  const env = context.locals.runtime.env;
-  const token = generateToken(env); // Pass the env to generateToken
-
-  context.cookies.set('csrf-token', token, {
-    httpOnly: true,
-    path: '/',
-    secure: import.meta.env.PROD,
-    sameSite: 'lax',
-    maxAge: 60 * 60 * 1, // 1 hour (e.g.)
+  const { generateCsrfToken, validateRequest } = doubleCsrf({
+    getSecret: () => secret,
+    getSessionIdentifier: () => '', // TODO: replace with your session identifier logic
+    cookieName: '__Host-csrf-secret',
+    cookieOptions: {
+      path: '/',
+      secure: import.meta.env.PROD,
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 2, // 2 hours
+    },
+    size: 32,
   });
+
+  csrfUtils = { generateCsrfToken, validateRequest };
+  return csrfUtils;
+}
+
+export async function prepareCsrf(context: APIContext): Promise<string> {
+  const env = context.locals.runtime?.env as RuntimeEnv | undefined;
+  if (!env) {
+    console.error('CSRF Prep: RuntimeEnv missing.');
+    throw new Error('Server configuration error for CSRF prep.');
+  }
+
+  const { generateCsrfToken } = getCsrfUtils(env);
+  const dummyRes = new Response();
+  const token = generateCsrfToken(context.request as Request, dummyRes, {
+    overwrite: true,
+  });
+
+  const setCookie = dummyRes.headers.get('set-cookie');
+  if (setCookie) {
+    const [cookiePair] = setCookie.split(';');
+    const [name, value] = cookiePair.split('=');
+    context.cookies.set(name, decodeURIComponent(value), {
+      path: '/',
+      secure: import.meta.env.PROD,
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 2,
+    });
+  }
+
   return token;
 }
 
-/**
- * Middleware or helper to validate CSRF token from a request.
- * Typically used in API endpoints that handle form submissions or state-changing operations.
- *
- * @example
- * // In an Astro API endpoint (e.g., POST request)
- * import { validateRequestCsrf } from '@utils/csrf';
- *
- * export async function POST(context: APIContext) {
- * if (!validateRequestCsrf(context)) {
- * return new Response("Invalid CSRF token", { status: 403 });
- * }
- * // ... process request ...
- * }
- */
-export function validateRequestCsrf(context: APIContext): boolean {
-  const tokenFromHeader = context.request.headers.get('x-csrf-token');
-  // Or, if you send it in the form body:
-  // const formData = await context.request.formData();
-  // const tokenFromForm = formData.get('_csrf') as string;
-
-  const tokenToValidate = tokenFromHeader; // Choose based on how you send it
-
-  if (!tokenToValidate) {
-    console.warn('CSRF token not found in request.');
+export async function validateRequestCsrf(
+  context: APIContext
+): Promise<boolean> {
+  const env = context.locals.runtime?.env as RuntimeEnv | undefined;
+  if (!env) {
+    console.error('CSRF Valid: RuntimeEnv missing.');
     return false;
   }
-  const env = context.locals.runtime.env;
-  return validateToken(tokenToValidate, env); // Pass env to validateToken
+
+  const { validateRequest } = getCsrfUtils(env);
+  const dummyRes = new Response();
+
+  try {
+    const isValid = validateRequest(
+      context.request as Request,
+      dummyRes
+    );
+    if (!isValid) {
+      console.warn(
+        `CSRF token validation failed: ${context.request.method} ${context.url.pathname}`
+      );
+    }
+    return isValid;
+  } catch (error) {
+    console.error('Error during CSRF validation:', error);
+    return false;
+  }
 }

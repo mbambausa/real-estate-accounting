@@ -2,7 +2,6 @@
 {
   "extends": "astro/tsconfigs/strict",
   "compilerOptions": {
-    // Overrides and additions to astro/tsconfigs/strict
     "baseUrl": ".",
     "paths": {
       "@components/*":   ["src/components/*"],

@@ -4,20 +4,19 @@ import AppLayout from "../../../layouts/AppLayout.astro";
 // EntityForm is a good candidate if the form structure is identical to the edit form.
 // For this example, we'll assume the form is directly in this page, but using EntityForm.astro would be more DRY.
 // import EntityForm from "../../../components/entities/EntityForm.astro"; 
-import EntitySelector from "../../../components/entities/EntitySelector.astro";
+import EntitySelector from "../../../components/accounting/selectors/EntitySelector.astro";
 import Alert from "../../../components/ui/Alert.astro";
 import Button from "../../../components/ui/Button.astro"; // For a potential cancel button if not part of EntityForm
 import { createEntityService } from "../../../lib/services/entity-service";
-import { getSession } from "../../../lib/auth";
 import type { Entity } from "../../../types/entity";
+import type { DbEntity } from "../../../db/schema";
 import type { APIContext } from "astro";
 
 // Type assertion for locals if not globally typed
 const locals = Astro.locals as App.Locals;
 
-// 1. Get session and validate authentication - FIXED: Added the environment parameter
-const session = await getSession(Astro.request, locals.runtime?.env);
-const userId = session?.user?.id;
+// Get user directly from locals instead of using getSession
+const userId = locals.user?.id;
 
 if (!userId) {
   return Astro.redirect('/auth/signin?error=Unauthorized&redirect=/app/entities/new');
@@ -41,13 +40,14 @@ const errorMessageFromQuery = Astro.url.searchParams.get('error');
 // Initialize entity service
 const entityService = db ? createEntityService(db) : null;
 
-let allEntitiesForParentSelector: Entity[] = [];
+let allEntitiesForParentSelector: DbEntity[] = [];
 let pageError: string | null = null;
 
 if (entityService) {
   try {
     // 3. Fetch all entities for the current user to populate the parent selector
-    allEntitiesForParentSelector = await entityService.getAllEntities(userIdString);
+    // Cast to DbEntity[] to match what EntitySelector expects
+    allEntitiesForParentSelector = await entityService.getAllEntities(userIdString) as unknown as DbEntity[];
   } catch (err: any) {
     console.error('Error fetching entities for parent selector:', err);
     pageError = err.message || "Failed to load existing entities for parent selection.";
@@ -206,9 +206,11 @@ const formatBusinessTypeDisplay = (type: string) => {
 
             <EntitySelector
               entities={allEntitiesForParentSelector}
-              name="parent_id" id="parent_id_selector" label="Parent Entity (Optional)"
+              selectedEntityId=""
+              name="parent_id" 
+              id="parent_id_selector" 
+              label="Parent Entity (Optional)"
               placeholder="None (This is a top-level entity)"
-              showLegalName={true}
               class="mt-1"
             />
             <p class="mt-1 text-xs text-gray-500">

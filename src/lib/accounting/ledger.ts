@@ -1,4 +1,4 @@
-// src/lib/accounting/core/ledger.ts
+// src/lib/accounting/ledger.ts
 
 import { Account } from './account';
 // Use the same AccountType definition as used in the Account class for consistency

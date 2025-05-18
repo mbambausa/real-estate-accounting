@@ -1,10 +1,9 @@
 ---
 // src/pages/app/accounts/new.astro
 import AppLayout from "../../../layouts/AppLayout.astro";
-import AccountForm from "../../../components/accounts/AccountForm.astro"; // This component will also need updates
+import AccountForm from "../../../components/accounting/AccountForm.astro"; // Fixed path: accounts -> accounting
 import Alert from "../../../components/ui/Alert.astro";
 import Button from "../../../components/ui/Button.astro"; // For the cancel button
-import { getSession } from "../../../lib/auth";
 import { createAccountService } from "../../../lib/services/account-service"; // To fetch existing accounts for parent selection
 import type { DbChartOfAccount } from "../../../db/schema";
 import type { AccountSystemType } from "../../../db/schema"; // Use AccountSystemType from schema
@@ -13,9 +12,8 @@ import type { APIContext } from "astro";
 // Type assertion for locals if not globally typed
 const locals = Astro.locals as App.Locals;
 
-// 1. Get session and validate authentication - FIX: Add second parameter
-const session = await getSession(Astro.request, locals.runtime?.env);
-const userId = session?.user?.id;
+// Access user directly from Astro.locals instead of using getSession
+const userId = locals.user?.id;
 
 if (!userId) {
   return Astro.redirect('/auth/signin?error=Unauthorized&redirect=/app/accounts/new');

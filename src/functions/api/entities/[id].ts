@@ -1,9 +1,9 @@
 // src/functions/api/entities/[id].ts
 import type { APIContext } from 'astro';
 import { createEntityService } from '@lib/services/entity-service';
-import type { EntityInput } from '../../../types/entity'; // Use a relative path
+import { validateRequestBody, partialEntityInputSchema } from '../utils/zodSchemas';
+import type { EntityInput } from '../../../types/entity';
 import { AppError, ErrorCode, handleError } from '@utils/errors';
-import { getCurrentUserId } from '@lib/auth';
 
 /**
  * GET /api/entities/[id]
@@ -18,8 +18,7 @@ export async function GET({ params, request, locals }: APIContext) {
       throw new AppError(ErrorCode.VALIDATION_ERROR, 'Entity ID is required in path.', 400);
     }
 
-    // Use our auth helper to get the current user's ID
-    const userId = await getCurrentUserId(request, locals.runtime.env);
+    const userId = locals.user?.id;
     if (!userId) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -29,21 +28,24 @@ export async function GET({ params, request, locals }: APIContext) {
 
     const entityService = createEntityService(locals.runtime.env.DB);
     const entity = await entityService.getEntityById(entityId, userId);
-    
+
     if (!entity) {
       throw new AppError(ErrorCode.NOT_FOUND, 'Entity not found or access denied.', 404);
     }
-    
+
     return new Response(JSON.stringify(entity), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error: unknown) {
     const appError = handleError(error);
-    return new Response(JSON.stringify({ error: appError.message, code: appError.code }), {
-      status: appError.status,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return new Response(
+      JSON.stringify({ error: appError.message, code: appError.code }),
+      {
+        status: appError.status,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
   }
 }
 
@@ -51,7 +53,7 @@ export async function GET({ params, request, locals }: APIContext) {
  * PUT /api/entities/[id]
  * 
  * Updates an existing entity.
- * Validates that the requesting user owns the entity.
+ * Validates that the requesting user owns the entity, and applies Zod schema to incoming data.
  */
 export async function PUT({ params, request, locals }: APIContext) {
   try {
@@ -60,8 +62,7 @@ export async function PUT({ params, request, locals }: APIContext) {
       throw new AppError(ErrorCode.VALIDATION_ERROR, 'Entity ID is required in path.', 400);
     }
 
-    // Use our auth helper to get the current user's ID
-    const userId = await getCurrentUserId(request, locals.runtime.env);
+    const userId = locals.user?.id;
     if (!userId) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -69,21 +70,36 @@ export async function PUT({ params, request, locals }: APIContext) {
       });
     }
 
-    const entityData = await request.json() as Partial<EntityInput>;
-    
+    // Validate and parse incoming body
+    const validatedData = await validateRequestBody(request, partialEntityInputSchema);
+
     const entityService = createEntityService(locals.runtime.env.DB);
-    const updatedEntity = await entityService.updateEntity(entityId, entityData, userId);
-    
+    const updatedEntity = await entityService.updateEntity(
+      entityId,
+      validatedData as EntityInput,
+      userId
+    );
+
     return new Response(JSON.stringify(updatedEntity), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error: unknown) {
     const appError = handleError(error);
-    return new Response(JSON.stringify({ error: appError.message, code: appError.code }), {
-      status: appError.status,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    const payload: Record<string, unknown> = {
+      error: appError.message,
+      code: appError.code,
+    };
+    if ((appError as any).details) {
+      payload.details = (appError as any).details;
+    }
+    return new Response(
+      JSON.stringify(payload),
+      {
+        status: appError.status,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
   }
 }
 
@@ -100,8 +116,7 @@ export async function DELETE({ params, request, locals }: APIContext) {
       throw new AppError(ErrorCode.VALIDATION_ERROR, 'Entity ID is required in path.', 400);
     }
 
-    // Use our auth helper to get the current user's ID
-    const userId = await getCurrentUserId(request, locals.runtime.env);
+    const userId = locals.user?.id;
     if (!userId) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
@@ -111,21 +126,26 @@ export async function DELETE({ params, request, locals }: APIContext) {
 
     const entityService = createEntityService(locals.runtime.env.DB);
     const success = await entityService.deleteEntity(entityId, userId);
-    
+
     if (!success) {
-      // Changed to SERVER_ERROR to match your ErrorCode enum
       throw new AppError(ErrorCode.SERVER_ERROR, 'Failed to delete entity.', 500);
     }
-    
-    return new Response(JSON.stringify({ message: 'Entity deleted successfully.' }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
+
+    return new Response(
+      JSON.stringify({ message: 'Entity deleted successfully.' }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
   } catch (error: unknown) {
     const appError = handleError(error);
-    return new Response(JSON.stringify({ error: appError.message, code: appError.code }), {
-      status: appError.status,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return new Response(
+      JSON.stringify({ error: appError.message, code: appError.code }),
+      {
+        status: appError.status,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
   }
 }

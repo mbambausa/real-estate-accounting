@@ -1,0 +1,249 @@
+---
+// src/components/accounting/AccountForm.astro
+import Button from "@components/ui/Button.astro";
+import Alert from "@components/ui/Alert.astro";
+import type { DbChartOfAccount, AccountSystemType } from "@db/schema";
+
+interface Props {
+  /** Account data to pre-fill the form. For new accounts, pass default/empty values. */
+  account?: Partial<DbChartOfAccount> & { type: AccountSystemType };
+  /** List of all user's accounts to select a parent from. */
+  availableParentAccounts?: DbChartOfAccount[];
+  /** True if editing an existing account */
+  isEditing?: boolean;
+  /** Error message to display. */
+  errorMessage?: string | null;
+  /** The URL the form should submit to. */
+  formAction: string;
+  /** Text for the submit button. */
+  submitButtonText?: string;
+  /** URL for the cancel button or navigation. */
+  cancelUrl: string;
+}
+
+const {
+  account,
+  availableParentAccounts = [],
+  isEditing = false,
+  errorMessage = null,
+  formAction,
+  submitButtonText = isEditing ? "Save Changes" : "Create Account",
+  cancelUrl,
+} = Astro.props as Props;
+
+// Normalize account data for the form
+const currentAccount: {
+  id?: string;
+  code: string;
+  name: string;
+  type: AccountSystemType;
+  subtype: string | null;
+  description: string | null;
+  is_recoverable: boolean;
+  recovery_percentage: number | null; // percentage 0-100
+  tax_category: string | null;
+  is_active: boolean;
+  parent_id: string | null;
+} = {
+  id: account?.id,
+  code: account?.code || "",
+  name: account?.name || "",
+  type: account?.type || "expense",
+  subtype: account?.subtype || null,
+  description: account?.description || null,
+  is_recoverable: account?.is_recoverable === 1,
+  recovery_percentage:
+    account?.recovery_percentage != null
+      ? account.recovery_percentage / 100
+      : account?.is_recoverable === 1
+      ? 100
+      : null,
+  tax_category: account?.tax_category || null,
+  is_active: account?.is_active !== 0,
+  parent_id: account?.parent_id || null,
+};
+
+const accountSystemTypes: AccountSystemType[] = [
+  "asset",
+  "liability",
+  "equity",
+  "income",
+  "expense",
+];
+const expenseSubtypesList = [
+  { value: "recoverable", label: "Recoverable" },
+  { value: "non-recoverable", label: "Non-Recoverable" },
+  { value: "other", label: "Other" },
+];
+
+const parentAccountOptions = availableParentAccounts;
+const idSuffix = currentAccount.id || 'new';
+---
+
+<form
+  method="POST"
+  action={formAction}
+  x-data={{
+    accountType: currentAccount.type,
+    isRecoverableChecked: currentAccount.is_recoverable,
+    get isExpenseType() { return this.accountType === 'expense'; }
+  }}
+  class="space-y-6 bg-white p-6 sm:p-8 rounded-xl shadow-xl border border-gray-200"
+  id={isEditing ? `edit-account-form-${idSuffix}` : `new-account-form-${idSuffix}`}
+>
+  {errorMessage && <Alert type="error" class="mb-6" dismissible>{decodeURIComponent(errorMessage)}</Alert>}
+
+  {isEditing && <input type="hidden" name="_method" value="PUT" />}
+
+  <!-- Code & Name -->
+  <div>
+    <label for={`code-${idSuffix}`} class="block text-sm font-medium text-gray-700 mb-1">
+      Account Code <span class="text-red-500">*</span>
+    </label>
+    <input
+      id={`code-${idSuffix}`}
+      name="code"
+      type="text"
+      required
+      value={currentAccount.code}
+      class="w-full px-4 py-2 border rounded-lg"
+      placeholder="e.g., 1010, 50200"
+    />
+  </div>
+
+  <div>
+    <label for={`name-${idSuffix}`} class="block text-sm font-medium text-gray-700 mb-1">
+      Account Name <span class="text-red-500">*</span>
+    </label>
+    <input
+      id={`name-${idSuffix}`}
+      name="name"
+      type="text"
+      required
+      value={currentAccount.name}
+      class="w-full px-4 py-2 border rounded-lg"
+      placeholder="e.g., Operating Bank Account"
+    />
+  </div>
+
+  <!-- Type Selector -->
+  <div>
+    <label for={`type-${idSuffix}`} class="block text-sm font-medium text-gray-700 mb-1">
+      Account Type <span class="text-red-500">*</span>
+    </label>
+    <select
+      id={`type-${idSuffix}`}
+      name="type"
+      required
+      x-model="accountType"
+      class="w-full px-4 py-2 border rounded-lg bg-white"
+    >
+      {accountSystemTypes.map(t => (
+        <option value={t} selected={currentAccount.type === t}>
+          {t.charAt(0).toUpperCase() + t.slice(1)}
+        </option>
+      ))}
+    </select>
+  </div>
+
+  <!-- Expense-specific fields -->
+  <div x-show="isExpenseType" x-transition>
+    <label for={`subtype-${idSuffix}`} class="block text-sm font-medium text-gray-700 mb-1">
+      Expense Subtype
+    </label>
+    <select id={`subtype-${idSuffix}`} name="subtype" class="w-full px-4 py-2 border rounded-lg bg-white">
+      <option value="">Select a subtype...</option>
+      {expenseSubtypesList.map(s => (
+        <option value={s.value} selected={currentAccount.subtype === s.value}>
+          {s.label}
+        </option>
+      ))}
+    </select>
+  </div>
+
+  <div class="flex items-center" x-show="isExpenseType" x-transition>
+    <input
+      id={`is_recoverable-${idSuffix}`} 
+      name="is_recoverable" 
+      type="checkbox"
+      value="true"
+      x-model="isRecoverableChecked"
+      class="h-4 w-4 rounded"
+    />
+    <label for={`is_recoverable-${idSuffix}`} class="ml-2 text-sm text-gray-700">
+      Recoverable?
+    </label>
+  </div>
+
+  <div x-show="isExpenseType && isRecoverableChecked" x-transition>
+    <label for={`recovery_percentage-${idSuffix}`} class="block text-sm font-medium text-gray-700 mb-1">
+      Recovery Percentage (0–100)
+    </label>
+    <input
+      id={`recovery_percentage-${idSuffix}`}
+      name="recovery_percentage"
+      type="number"
+      min="0" max="100" step="0.01"
+      value={currentAccount.recovery_percentage?.toString() || ''}
+      class="w-full px-4 py-2 border rounded-lg"
+      placeholder="100"
+    />
+  </div>
+
+  <!-- Description, Tax Category, Parent -->
+  <div>
+    <label for={`description-${idSuffix}`} class="block text-sm font-medium text-gray-700 mb-1">
+      Description
+    </label>
+    <textarea id={`description-${idSuffix}`} name="description" rows="3"
+      class="w-full px-4 py-2 border rounded-lg"
+    >{currentAccount.description || ''}</textarea>
+  </div>
+
+  <div>
+    <label for={`tax_category-${idSuffix}`} class="block text-sm font-medium text-gray-700 mb-1">
+      Tax Category
+    </label>
+    <input id={`tax_category-${idSuffix}`} name="tax_category" type="text"
+      value={currentAccount.tax_category || ''}
+      class="w-full px-4 py-2 border rounded-lg"
+    />
+  </div>
+
+  <div>
+    <label for={`parent_id-${idSuffix}`} class="block text-sm font-medium text-gray-700 mb-1">
+      Parent Account
+    </label>
+    <select id={`parent_id-${idSuffix}`} name="parent_id"
+      class="w-full px-4 py-2 border rounded-lg bg-white"
+    >
+      <option value="">None</option>
+      {parentAccountOptions.map(p => (
+        <option value={p.id} selected={currentAccount.parent_id === p.id}>
+          {p.code} – {p.name}
+        </option>
+      ))}
+    </select>
+  </div>
+
+  <!-- Active Checkbox -->
+  <div class="flex items-center">
+    <input
+      id={`is_active-${idSuffix}`}
+      name="is_active"
+      type="checkbox"
+      value="true"
+      checked={currentAccount.is_active}
+      class="h-4 w-4 rounded"
+    />
+    <label for={`is_active-${idSuffix}`} class="ml-2 text-sm text-gray-700">
+      Active
+    </label>
+  </div>
+
+  <!-- Actions -->
+  <div class="flex justify-end space-x-4 pt-6 border-t mt-8">
+    <Button variant="outline" href={cancelUrl}>Cancel</Button>
+    <Button type="submit" variant="primary">{submitButtonText}</Button>
+  </div>
+</form>

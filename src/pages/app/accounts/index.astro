@@ -1,20 +1,18 @@
 ---
 // src/pages/app/accounts/index.astro
 import AppLayout from "../../../layouts/AppLayout.astro";
-import AccountList from "../../../components/accounts/AccountList.astro"; // This component will also need updates
+import AccountList from "../../../components/accounting/AccountList.astro"; // Fixed path: accounts -> accounting
 import Button from "../../../components/ui/Button.astro";
-import Alert from "../../../components/ui/Alert.astro"; // Assuming Alert component exists
+import Alert from "../../../components/ui/Alert.astro";
 import { createAccountService } from "../../../lib/services/account-service";
-import { getSession } from "../../../lib/auth"; // Ensure this path is correct
-import type { DbChartOfAccount } from "../../../db/schema"; // Use DbChartOfAccount from schema
+import type { DbChartOfAccount } from "../../../db/schema";
 import type { APIContext } from "astro";
 
 // Type assertion for locals if not globally typed
 const locals = Astro.locals as App.Locals;
 
-// 1. Get session and validate authentication
-const session = await getSession(Astro.request, locals.runtime?.env);
-const userId = session?.user?.id;
+// Access user directly from Astro.locals instead of using getSession
+const userId = locals.user?.id;
 
 if (!userId) {
   return Astro.redirect('/auth/signin?error=Unauthorized&redirect=/app/accounts');

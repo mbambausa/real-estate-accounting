@@ -1,0 +1,133 @@
+# .github/workflows/initial_ci.yml
+name: Astro CI
+
+on:
+  push:
+    branches:
+      - main # Or your primary branch, e.g., master
+  pull_request:
+    branches:
+      - main # Or your primary branch
+
+jobs:
+  build_and_test:
+    name: Build & Test Project
+    runs-on: ubuntu-latest # Use the latest stable Ubuntu runner
+
+    strategy:
+      matrix:
+        node-version: [20.x] # Specify Node.js versions to test against; 20.x is a good current LTS
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm' # Enable caching for npm dependencies
+
+      - name: Install dependencies
+        run: npm ci # Use 'ci' for cleaner installs in CI environments
+
+      - name: Generate Wrangler types (important before build/typecheck)
+        # This script is `wrangler types && astro dev` or `wrangler types && astro build`
+        # We only need the `wrangler types` part if not running build immediately.
+        # For now, let's assume build script handles it or run it explicitly.
+        # Running `wrangler types` might require some env vars if it tries to connect.
+        # If it's just for local typegen, it might be okay.
+        # Let's ensure it can run harmlessly or is part of the build.
+        # The `build` script `wrangler types && astro build` handles this.
+        # The `dev` script also has it. Linting/typechecking might benefit.
+        # For simplicity, we'll rely on typecheck/build scripts to handle `wrangler types` if needed.
+        # If `npm run lint` or `npm run typecheck` fail due to missing wrangler types,
+        # you might need an explicit `npx wrangler types` step here,
+        # possibly with dummy Cloudflare env vars if it tries to initialize.
+        # For now, omitting explicit `npx wrangler types` step before lint/typecheck.
+        run: echo "Skipping explicit 'wrangler types' before lint/typecheck, assuming scripts handle it or it's not strictly needed for these static checks."
+
+      - name: Lint code
+        run: npm run lint
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Run unit tests
+        run: npm run test:unit
+        env:
+          # Vitest might need some environment variables if it interacts with
+          # code that expects Cloudflare bindings, even for unit tests.
+          # Provide dummy values or ensure tests mock these out.
+          # Example dummy values (adjust if your tests need more specific mocks):
+          CI: true # Often used by test runners
+          # DB: UnusedPlaceholder # Dummy binding for D1 if Vitest tries to access it
+          # SESSION: UnusedPlaceholder
+          # REPORTS_CACHE: UnusedPlaceholder
+          # DOCUMENTS: UnusedPlaceholder
+          # AUTH_SECRET: "dummy-auth-secret-for-ci-tests-32-chars"
+          # CSRF_SECRET: "dummy-csrf-secret-for-ci-tests-32-chars"
+
+      - name: Build project
+        run: npm run build # This script is `wrangler types && astro build`
+        env:
+          # Build might require environment variables if your code accesses them at build time
+          # For Astro with Cloudflare adapter, actual secrets are usually not needed for `astro build`
+          # unless you have specific build-time logic that requires them.
+          # Auth.js config might try to read AUTH_SECRET/CSRF_SECRET if not careful.
+          # Ensure build-time code doesn't fail if these are not real secrets.
+          # Dummy values can prevent errors if `getAuthConfig` or similar is called during build.
+          AUTH_SECRET: "ci-dummy-auth-secret-that-is-32-characters-long"
+          CSRF_SECRET: "ci-dummy-csrf-secret-that-is-32-characters-long"
+          # Other env vars your build might expect (even if dummy)
+          ENVIRONMENT: "ci"
+          # Note: Cloudflare bindings (DB, KV, R2) are not available during `astro build` on GitHub Actions
+          # unless you specifically mock/set them up, which is complex.
+          # `astro build` for SSR/Workers primarily bundles code.
+
+      # E2E Tests (Playwright)
+      # This section is more complex as it often requires a running server
+      # and browser binaries.
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps # Installs browsers needed by Playwright
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+        env:
+          CI: true
+          # E2E tests will need a running application.
+          # Your `npm run test:e2e` script (likely `playwright test`)
+          # should ideally start a preview server or test against a deployed preview.
+          # For testing the output of `astro build` (which is for Cloudflare Pages),
+          # You might need to use `wrangler pages dev ./dist -- ... (bindings)`
+          # but this is complex to set up in CI with actual bindings.
+          #
+          # A common strategy for Playwright in CI with SSR apps:
+          # 1. Build the app: `npm run build` (already done)
+          # 2. Start a preview server in the background using the build output.
+          #    Astro's `astro preview` works with `output: 'server'` but is for local dev.
+          # For Cloudflare adapter output, `wrangler pages dev ./dist` is the way.
+          #    This requires careful setup of bindings (D1, KV, R2) even if mocked.
+          #
+          # Simplification for initial CI:
+          # If your Playwright config (`playwright.config.ts`) is set up to use
+          # a `webServer` command that can start your app using wrangler dev with local mocks,
+          # Playwright can manage starting/stopping it.
+          # Example (in playwright.config.ts):
+          # webServer: {
+          #   command: 'npm run pages:dev --port=4321', # Assuming pages:dev uses local/mocked bindings
+          #   url: 'http://localhost:4321',
+          #   reuseExistingServer: !process.env.CI,
+          #   stdout: 'pipe',
+          #   stderr: 'pipe',
+          # },
+          #
+          # For this initial CI, we assume `npm run test:e2e` might have its own server setup logic
+          # or that you will expand this step later.
+          #
+          # Provide dummy secrets if your E2E test setup code tries to access them.
+          AUTH_SECRET: "ci-dummy-auth-secret-that-is-32-characters-long"
+          CSRF_SECRET: "ci-dummy-csrf-secret-that-is-32-characters-long"
+          # Dummy Cloudflare bindings if your E2E server setup tries to initialize them without mocks
+          # This is highly dependent on your test setup for E2E.
+          # For a true E2E against Cloudflare infrastructure, you'd deploy to a preview environment first.

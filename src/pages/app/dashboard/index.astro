@@ -1,7 +1,6 @@
 ---
 // src/pages/app/dashboard/index.astro
 import AppLayout from "@layouts/AppLayout.astro"; // Corrected path assuming @layouts alias
-import { getSession } from "@lib/auth"; // Corrected path assuming @lib alias
 import type { APIContext } from "astro";
 import Button from "@components/ui/Button.astro"; // For quick action links if styled as buttons
 
@@ -11,14 +10,12 @@ const formatCurrency = (value: number, currency = 'USD') => {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: currency }).format(value);
 };
 
-
 // Type assertion for locals if not globally typed
 const locals = Astro.locals as App.Locals;
 
-// 1. Get session and validate authentication - FIX: Add second parameter
-const session = await getSession(Astro.request, locals.runtime?.env);
-const userId = session?.user?.id;
-const userName = session?.user?.name || session?.user?.email || "User"; // Get user's name or email
+// Access user directly from Astro.locals instead of using getSession
+const userId = locals.user?.id;
+const userName = locals.user?.name || locals.user?.email || "User"; // Get user's name or email
 
 if (!userId) {
   // If no user ID, redirect to sign-in

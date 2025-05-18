@@ -1,0 +1,196 @@
+---
+// src/components/accounting/EntityForm.astro
+import Button from "@components/ui/Button.astro";
+import Alert from "@components/ui/Alert.astro";
+import type { DbEntity } from "@db/schema";
+
+interface EntityFormData extends Omit<Partial<DbEntity>, "is_active" | "allows_sub_entities"> {
+  parent_id?: string | null;
+  is_active?: boolean;
+  allows_sub_entities?: boolean;
+}
+
+interface Props {
+  entity?: EntityFormData;
+  availableParentEntities?: DbEntity[];
+  isEditing?: boolean;
+  errorMessage?: string | null;
+  formAction: string;
+  submitButtonText?: string;
+  cancelUrl: string;
+}
+
+const {
+  entity,
+  availableParentEntities = [],
+  isEditing = false,
+  errorMessage = null,
+  formAction,
+  submitButtonText = isEditing ? "Save Changes" : "Create Entity",
+  cancelUrl,
+} = Astro.props as Props;
+
+// Normalize for form values
+const currentEntity: EntityFormData = {
+  id: entity?.id,
+  legal_name: entity?.legal_name || "",
+  business_type: entity?.business_type || "llc",
+  ein: entity?.ein || null,
+  address: entity?.address || null,
+  parent_id: entity?.parent_id || null,
+  allows_sub_entities: entity?.allows_sub_entities === true,
+  is_active: entity?.is_active === true,
+};
+
+const businessTypes = [
+  { value: "llc", label: "Limited Liability Company (LLC)" },
+  { value: "corporation", label: "Corporation" },
+  { value: "sole_proprietorship", label: "Sole Proprietorship" },
+  { value: "partnership", label: "Partnership" },
+  { value: "trust", label: "Trust" },
+  { value: "other", label: "Other" },
+];
+
+const parentEntityOptions =
+  isEditing && currentEntity.id
+    ? availableParentEntities.filter((ent) => ent.id !== currentEntity.id)
+    : availableParentEntities;
+
+const idSuffix = currentEntity.id || "new";
+---
+
+<form
+  method="POST"
+  action={formAction}
+  class="space-y-6 bg-white p-6 sm:p-8 rounded-xl shadow-lg border border-gray-200"
+  id={isEditing ? `edit-entity-form-${idSuffix}` : `new-entity-form-${idSuffix}`}
+>
+  {errorMessage && (
+    <Alert type="error" class="mb-6" dismissible>
+      {decodeURIComponent(errorMessage)}
+    </Alert>
+  )}
+
+  {isEditing && <input type="hidden" name="_method" value="PUT" />}
+
+  <!-- Legal Name -->
+  <div>
+    <label for={`legal_name-${idSuffix}`} class="block text-sm font-medium text-gray-700 mb-1">
+      Legal Name <span class="text-red-500">*</span>
+    </label>
+    <input
+      id={`legal_name-${idSuffix}`}
+      name="legal_name"
+      type="text"
+      required
+      value={currentEntity.legal_name}
+      class="w-full px-4 py-2 border rounded-lg"
+      placeholder="e.g., Oakwood Properties LLC"
+    />
+  </div>
+
+  <!-- Business Type -->
+  <div>
+    <label for={`business_type-${idSuffix}`} class="block text-sm font-medium text-gray-700 mb-1">
+      Business Type <span class="text-red-500">*</span>
+    </label>
+    <select
+      id={`business_type-${idSuffix}`}
+      name="business_type"
+      required
+      class="w-full px-4 py-2 border rounded-lg bg-white"
+    >
+      {businessTypes.map((bt) => (
+        <option value={bt.value} selected={currentEntity.business_type === bt.value}>
+          {bt.label}
+        </option>
+      ))}
+    </select>
+  </div>
+
+  <!-- EIN -->
+  <div>
+    <label for={`ein-${idSuffix}`} class="block text-sm font-medium text-gray-700 mb-1">
+      EIN (Optional)
+    </label>
+    <input
+      id={`ein-${idSuffix}`}
+      name="ein"
+      type="text"
+      value={currentEntity.ein || ""}
+      class="w-full px-4 py-2 border rounded-lg"
+      placeholder="XX-XXXXXXX"
+    />
+  </div>
+
+  <!-- Address -->
+  <div>
+    <label for={`address-${idSuffix}`} class="block text-sm font-medium text-gray-700 mb-1">
+      Address (Optional)
+    </label>
+    <textarea
+      id={`address-${idSuffix}`}
+      name="address"
+      rows="3"
+      class="w-full px-4 py-2 border rounded-lg"
+      placeholder="Street address, city, state, zip"
+    >
+      {currentEntity.address || ""}
+    </textarea>
+  </div>
+
+  <!-- Parent Entity -->
+  <div>
+    <label for={`parent_id-${idSuffix}`} class="block text-sm font-medium text-gray-700 mb-1">
+      Parent Entity (Optional)
+    </label>
+    <select
+      id={`parent_id-${idSuffix}`}
+      name="parent_id"
+      class="w-full px-4 py-2 border rounded-lg bg-white"
+    >
+      <option value="">None (Top-level)</option>
+      {parentEntityOptions.map((pe) => (
+        <option value={pe.id} selected={currentEntity.parent_id === pe.id}>
+          {pe.legal_name} ({pe.business_type})
+        </option>
+      ))}
+    </select>
+  </div>
+
+  <!-- Allows Sub-Entities -->
+  <div class="flex items-center">
+    <input
+      id={`allows_sub_entities-${idSuffix}`}
+      name="allows_sub_entities"
+      type="checkbox"
+      value="true"
+      checked={currentEntity.allows_sub_entities}
+      class="h-4 w-4 rounded"
+    />
+    <label for={`allows_sub_entities-${idSuffix}`} class="ml-2 text-sm text-gray-700">
+      Allows Sub-Entities
+    </label>
+  </div>
+
+  <!-- Active -->
+  <div class="flex items-center">
+    <input
+      id={`is_active-${idSuffix}`}
+      name="is_active"
+      type="checkbox"
+      value="true"
+      checked={currentEntity.is_active}
+      class="h-4 w-4 rounded"
+    />
+    <label for={`is_active-${idSuffix}`} class="ml-2 text-sm text-gray-700">
+      Active Entity
+    </label>
+  </div>
+
+  <!-- Actions -->
+  <div class="flex justify-end space-x-4 pt-6 border-t mt-8">
+    <Button variant="outline" href={cancelUrl}>Cancel</Button>
+    <Button type="submit" variant="primary">{submitButtonText}</Button>
+  </div>
+</form>

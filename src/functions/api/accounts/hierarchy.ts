@@ -2,7 +2,6 @@
 import type { APIContext } from 'astro';
 import { createAccountService } from '@lib/services/account-service';
 import { handleError } from '@utils/errors';
-import { getCurrentUserId } from '@lib/auth';
 
 /**
  * GET /api/accounts/hierarchy
@@ -12,8 +11,8 @@ import { getCurrentUserId } from '@lib/auth';
  */
 export async function GET({ request, locals }: APIContext) {
   try {
-    // Get the current user's ID using our auth helper
-    const userId = await getCurrentUserId(request, locals.runtime.env);
+    // Access user ID directly from locals
+    const userId = locals.user?.id;
     if (!userId) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
