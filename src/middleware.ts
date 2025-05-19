@@ -12,14 +12,13 @@ export const onRequest = defineMiddleware(async (context: APIContext, next) => {
   const { request, locals, url, redirect } = context;
   const method = request.method;
 
-  // Ensure runtime env is available
   const runtimeEnv = locals.runtime?.env as RuntimeEnv | undefined;
   if (!runtimeEnv) {
     console.error('FATAL: Runtime environment not available in middleware.');
     return new Response('Server configuration error.', { status: 500 });
   }
 
-  // Delegate auth API routes directly to Auth.js
+  // Auth.js API route handling
   if (url.pathname.startsWith('/api/auth/')) {
     return Auth(request, getAuthConfig(runtimeEnv));
   }
@@ -34,21 +33,49 @@ export const onRequest = defineMiddleware(async (context: APIContext, next) => {
     return next();
   }
 
-  // Authenticate and populate session & user
+  // Session retrieval for all other requests - MODIFIED APPROACH
   try {
-    const authResult = await Auth(request, getAuthConfig(runtimeEnv));
+    const authConfig = getAuthConfig(runtimeEnv);
+    const sessionUrl = new URL('/api/auth/session', request.url);
+    const sessionRequest = new Request(sessionUrl.toString(), {
+      method: 'GET',
+      headers: request.headers
+    });
+
+    const authResult = await Auth(sessionRequest, authConfig);
     if (authResult instanceof Response) {
-      return authResult;
+      if (authResult.status === 200) {
+        try {
+          const sessionData = await authResult.json();
+          locals.session = sessionData as AuthJsSession;
+          if (locals.session) {
+            const typedSession = locals.session as AuthJsSession;
+            locals.user = (typedSession.user as AppUser) ?? null;
+          } else {
+            locals.user = null;
+          }
+        } catch {
+          locals.session = null;
+          locals.user = null;
+        }
+      } else {
+        locals.session = null;
+        locals.user = null;
+      }
+    } else {
+      locals.session = authResult as AuthJsSession;
+      if (locals.session) {
+        const typedSession = locals.session as AuthJsSession;
+        locals.user = (typedSession.user as AppUser) ?? null;
+      } else {
+        locals.user = null;
+      }
     }
-    const session = authResult as AuthJsSession | null;
-    locals.session = session;
-    locals.user = session?.user as AppUser ?? null;
   } catch (error: any) {
-    console.error('Error in auth middleware processing session:', error);
+    console.error(`Error in auth middleware processing session for ${url.pathname}:`, error);
     locals.session = null;
     locals.user = null;
 
-    // Redirect on critical config errors
     if (
       error.name === 'MissingSecretError' ||
       error.name === 'MissingAdapterError' ||
@@ -63,47 +90,55 @@ export const onRequest = defineMiddleware(async (context: APIContext, next) => {
   // CSRF protection for state-changing requests
   const stateChanging = ['POST', 'PUT', 'DELETE', 'PATCH'];
   if (stateChanging.includes(method)) {
-    const valid = await validateRequestCsrf(context);
-    if (!valid) {
-      console.warn(`CSRF validation failed for ${method} ${url.pathname}`);
-      if (url.pathname.startsWith('/api/')) {
-        return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), {
-          status: 403,
-          headers: { 'Content-Type': 'application/json' },
-        });
+    if (!url.pathname.startsWith('/api/auth/')) {
+      const valid = await validateRequestCsrf(context);
+      if (!valid) {
+        console.warn(`CSRF validation failed for ${method} ${url.pathname}`);
+        if (url.pathname.startsWith('/api/')) {
+          return new Response(JSON.stringify({ error: 'Invalid CSRF token' }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        const errorUrl = new URL('/auth/error', url.origin);
+        errorUrl.searchParams.set('error_code', 'CSRF_VALIDATION_FAILED');
+        return redirect(errorUrl.toString(), 307);
       }
-      const errorUrl = new URL('/auth/error', url.origin);
-      errorUrl.searchParams.set('auth_error_code', 'csrf_validation_failed');
-      return redirect(errorUrl.toString(), 307);
     }
-  } else if (method === 'GET' && request.headers.get('accept')?.includes('text/html') && !url.pathname.startsWith('/api/')) {
+  } else if (
+    method === 'GET' &&
+    request.headers.get('accept')?.includes('text/html') &&
+    !url.pathname.startsWith('/api/')
+  ) {
     try {
       locals.csrfToken = await prepareCsrf(context);
     } catch (e) {
       console.error('Error preparing CSRF token in middleware:', e);
+      if (runtimeEnv.ENVIRONMENT === 'development') {
+        locals.csrfToken = 'dev-csrf-token-' + Date.now();
+        console.warn('Using fallback CSRF token for development');
+      }
     }
   }
 
   // Redirect unauthenticated users from protected routes
   const protectedPattern = /^\/app(\/.*)?$/;
   if (protectedPattern.test(url.pathname) && !locals.user) {
-    const callback = encodeURIComponent(url.pathname + url.search);
+    const callbackUrl = encodeURIComponent(url.pathname + url.search);
     const signInUrl = new URL('/auth/signin', url.origin);
-    signInUrl.searchParams.set('callbackUrl', callback);
+    signInUrl.searchParams.set('callbackUrl', callbackUrl);
     return redirect(signInUrl.toString(), 307);
   }
 
   // Redirect authenticated users away from public auth pages
-  const publicAuthPattern = /^\/auth\/(signin|signup|forgot-password|reset-password)(\/.*)?$/;
+  const publicAuthPattern = /^\/auth\/(signin|signup)(\/.*)?$/;
   if (publicAuthPattern.test(url.pathname) && locals.user) {
     const dashboardUrl = new URL('/app/dashboard', url.origin);
     return redirect(dashboardUrl.toString(), 307);
   }
 
-  // Proceed to the next middleware or route
   const response = await next();
 
-  // Add Vary header for CSRF token on HTML GET responses
   if (
     method === 'GET' &&
     locals.csrfToken &&

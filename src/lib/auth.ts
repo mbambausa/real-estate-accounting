@@ -12,7 +12,7 @@ declare module "@auth/core/adapters" {
   }
 }
 
-// Your application‐specific User shape
+// Your application‑specific User shape
 export interface AppUser extends AuthJsUser {
   id: string;
   role?: string;
@@ -28,9 +28,15 @@ export const getAuthConfig = (runtimeEnv: RuntimeEnv): AuthConfig => {
     );
   }
 
-  return {
+  // Ensure AUTH_URL is being logged if present in runtimeEnv, for debugging
+  // console.log(`[getAuthConfig] Using runtimeEnv.AUTH_URL: ${runtimeEnv.AUTH_URL}`);
+  // console.log(`[getAuthConfig] Using runtimeEnv.ENVIRONMENT: ${runtimeEnv.ENVIRONMENT}`);
+
+  const config: AuthConfig = {
     adapter: D1Adapter(runtimeEnv.DB),
     secret: runtimeEnv.AUTH_SECRET,
+    basePath: "/api/auth", // Crucial: Tells Auth.js its API routes are under /api/auth
+    trustHost: true,      // Crucial: Tells Auth.js to trust X-Forwarded-* headers from Cloudflare
 
     providers: [
       Credentials({
@@ -72,6 +78,11 @@ export const getAuthConfig = (runtimeEnv: RuntimeEnv): AuthConfig => {
               return null;
             }
 
+            if (!userRecord.password_hash) {
+              console.warn(`Authorize(): missing password_hash for ${email}`);
+              return null;
+            }
+
             const isValid = await verifyArgon2Password(
               userRecord.password_hash,
               password
@@ -93,7 +104,6 @@ export const getAuthConfig = (runtimeEnv: RuntimeEnv): AuthConfig => {
           }
         },
       }),
-      // add other providers (GitHub, Google, etc.) here as needed
     ],
 
     session: {
@@ -105,20 +115,20 @@ export const getAuthConfig = (runtimeEnv: RuntimeEnv): AuthConfig => {
       async jwt({ token, user }) {
         if (user) {
           token.userId = user.id;
-          // Safer access to role property using type guard
-          if ('role' in user && user.role) {
-            token.role = user.role;
+          // Ensure 'role' is handled safely if it might be missing from the user object
+          const appUser = user as AppUser;
+          if (appUser.role) {
+            token.role = appUser.role;
           }
         }
         return token;
       },
       async session({ session, token }) {
         if (session.user) {
-          // Using type assertion after assigning to avoid direct property access errors
-          session.user.id = token.userId as string;
+          const sessionUser = session.user as AppUser; // Cast for type safety
+          sessionUser.id = token.userId as string;
           if (token.role) {
-            // Using optional chaining and type assertion for safety
-            session.user.role = token.role as string;
+            sessionUser.role = token.role as string;
           }
         }
         return session;
@@ -128,9 +138,12 @@ export const getAuthConfig = (runtimeEnv: RuntimeEnv): AuthConfig => {
     pages: {
       signIn: "/auth/signin",
       signOut: "/auth/signout",
-      error: "/auth/error",
+      error: "/auth/error", // Make sure this page exists
     },
 
+    // Enable debug logs in development. Auth.js debug logs can be very verbose.
     debug: runtimeEnv.ENVIRONMENT === "development",
   };
+
+  return config;
 };

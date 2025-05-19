@@ -1,3 +1,4 @@
+-- src/db/migrations/0001_initial.sql
 -- Database Schema: Real Estate Accounting
 -- Version: 1.2 (Revised to use INTEGER for amounts/percentages, aligning with project plan)
 -- Date: 2025-05-17

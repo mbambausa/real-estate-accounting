@@ -25,6 +25,8 @@
     "@astrojs/db": "^0.14.14",
     "@auth/core": "^0.39.1",
     "@auth/d1-adapter": "^1.9.1",
+    "@unocss/transformer-directives": "^66.1.2",
+    "@unocss/transformer-variant-group": "^66.1.2",
     "alpinejs": "^3.14.9",
     "chart.js": "^4.4.9",
     "cookie": "^1.0.2",
