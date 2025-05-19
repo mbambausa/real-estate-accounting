@@ -1,41 +1,38 @@
-# wrangler.toml
+# wrangler.toml - Supporting both Pages and Workers
 name = "real-estate-accounting"
+
+# For Cloudflare Workers
 main = "./dist/_worker.js"
 compatibility_date = "2025-05-16"
 
-# Correct way to specify build output directory
-pages_build_output_dir = "dist"
-
-# Site configuration for static assets
+# Pages configuration
+# Don't include pages_build_output_dir - use the following instead:
 [site]
 bucket = "./dist"
 
-# D1 database configuration
+# Database and storage bindings
 [[d1_databases]]
 binding = "DB"
 database_name = "real-estate-accounting-db"
 database_id = "3198e043-80f0-4d51-b849-4d3a78380039"
 migrations_dir = "src/db/migrations"
 
-# KV namespace for session storage
 [[kv_namespaces]]
 binding = "SESSION"
 id = "b4591e5e144843f6837619edb455c52c"
 
-# KV namespace for reports cache
 [[kv_namespaces]]
 binding = "REPORTS_CACHE"
 id = "a5892e1bcc7b43d8ad84b9ffa89c59c1"
 
-# R2 bucket for document attachments
 [[r2_buckets]]
 binding = "DOCUMENTS"
 bucket_name = "real-estate-documents"
 
-# Environment variables (non-secrets)
+# Environment variables
 [vars]
 ENVIRONMENT = "production"
 
-# Local development settings
+# For dev environments
 [dev]
 port = 8788
